@@ -157,6 +157,7 @@ export function mount(main, ctx) {
     const rc = item.recommendation;
     r.reason.hidden = !isFocus || !rc?.reason;
     if (isFocus) setText(r.reasonText, rc?.reason ? U.minus(String(rc.reason).trim().replace(/\.+$/, "")) : "");
+    r.reason.title = isFocus && rc?.detail ? rc.detail : "";
 
     const geo = gaugeGeometry(item.value, parseTarget(item));
     r.gauge.hidden = !geo;

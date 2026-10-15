@@ -19,7 +19,7 @@ function nextChange(rec) {
     h("h2", { id: "next-title", class: "next__head" }, flag("meatball", "flag--md"), h("span", null, "Next change")),
     h("p", { class: "next__rec" }, gameText(rec.text)),
     h("div", { class: "next__foot" },
-      rec.reason ? h("span", { class: "next__reason num" }, reasonLine(rec.reason)) : null,
+      rec.reason ? h("span", { class: "next__reason num", title: rec.detail ?? null }, reasonLine(rec.reason)) : null,
       confidence(rec.confidence)));
 }
 
@@ -35,7 +35,7 @@ function findingsList(findings, onWhere) {
         h("span", { class: "num" }, h("span", { class: "sr-only" }, "Severity "), `${Math.round(sev * 100)}%`)),
       h("div", { class: "finding__body" },
         h("h3", { class: "finding__title" }, f.title),
-        f.evidence ? h("p", { class: "finding__evidence num" }, reasonLine(f.evidence)) : null,
+        f.evidence ? h("p", { class: "finding__evidence num", title: f.detail ?? null }, reasonLine(f.evidence)) : null,
         f.where?.length
           ? h("p", { class: "finding__where" }, f.where.map((w) => {
             const label = `${w.corner !== undefined && w.corner !== null ? `T${w.corner}` : "At"} · ${U.fmtDistance(w.distance)}`;
@@ -70,7 +70,7 @@ export function renderSessionAnalysis(an, { onWhere } = {}) {
       h("ul", null, an.alternatives.map((r) => h("li", { class: "alt" },
         h("p", { class: "alt__rec" }, gameText(r.text)),
         h("div", { class: "alt__foot" },
-          r.reason ? h("span", { class: "alt__reason num" }, reasonLine(r.reason)) : null,
+          r.reason ? h("span", { class: "alt__reason num", title: r.detail ?? null }, reasonLine(r.reason)) : null,
           confidence(r.confidence)))))));
   }
   parts.push(h("section", { "aria-labelledby": "findings-title" },
