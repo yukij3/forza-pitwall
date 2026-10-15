@@ -23,12 +23,17 @@ from .thresholds import (
     COUNTERSTEER_MIN,
     HEAVY_BRAKE,
     HIGH_SPEED_CORNER,
+    LOCK_DEEP_SLIP_RATIO,
+    LOCK_GAP_S,
+    LOCK_MAX_REAR_SLIP_ANGLE,
+    LOCK_MIN_SPEED,
+    LOCK_WHEEL_SPEED_RATIO,
     LOCKUP_MIN_S,
-    LOCKUP_SLIP_RATIO,
     MID_MIN_HALF_S,
     MID_SPEED_BAND,
     PHASE_LOADED_FRACTION,
     SLIP_LIMIT,
+    STEER_PINNED,
     THROTTLE_ON,
     UNSTABLE_MIN_S,
     UNSTABLE_REAR_MARGIN,
@@ -78,6 +83,8 @@ class PhaseStats:
     countersteer_s: float = 0.0
     peak_front: float = 0.0
     peak_rear: float = 0.0
+    seconds: float = 0.0  # loaded time behind the averages
+    pinned_s: float = 0.0  # ... of which with the steering at full lock
 
 
 @dataclass(slots=True)
@@ -171,21 +178,27 @@ class BottomingEvent:
 # --- Corner analysis ---------------------------------------------------------------
 @dataclass(slots=True)
 class _PhaseAcc:
+    """Time-weighted sums for one phase (packet rate doesn't bias the means)."""
+
     n: int = 0
+    w: float = 0.0
     bal: float = 0.0
     slip: float = 0.0
     yaw: float = 0.0
-    n_yaw: int = 0
+    w_yaw: float = 0.0
+    pinned: float = 0.0
     stats: PhaseStats = field(default_factory=PhaseStats)
 
     def finish(self) -> PhaseStats:
         st = self.stats
         st.samples = self.n
-        if self.n:
-            st.balance = self.bal / self.n
-            st.slip = self.slip / self.n
-        if self.n_yaw:
-            st.yaw = self.yaw / self.n_yaw
+        st.seconds = self.w
+        st.pinned_s = self.pinned
+        if self.w > 0:
+            st.balance = self.bal / self.w
+            st.slip = self.slip / self.w
+        if self.w_yaw > 0:
+            st.yaw = self.yaw / self.w_yaw
         return st
 
 
@@ -251,12 +264,16 @@ def analyze_corner(
         yb = _yaw_balance(s, turn, model, steer_sign, yaw_sign)
         bal = slip if yb is None else BALANCE_SLIP_WEIGHT * slip + BALANCE_YAW_WEIGHT * yb
         if abs(s.lat_g) >= loaded:
+            dt = s.dt
             acc.n += 1
-            acc.bal += bal
-            acc.slip += slip
+            acc.w += dt
+            acc.bal += bal * dt
+            acc.slip += slip * dt
+            if s.steer >= STEER_PINNED or s.steer <= -STEER_PINNED:
+                acc.pinned += dt
             if yb is not None:
-                acc.yaw += yb
-                acc.n_yaw += 1
+                acc.yaw += yb * dt
+                acc.w_yaw += dt
         if s.sa_f > st.peak_front:
             st.peak_front = s.sa_f
         if s.sa_r > st.peak_rear:
@@ -314,6 +331,42 @@ def analyze_corner(
     )
 
 
+def _is_locked(ws: float | None, sr: float) -> bool:
+    return (ws is not None and ws <= LOCK_WHEEL_SPEED_RATIO) or sr <= LOCK_DEEP_SLIP_RATIO
+
+
+def _lock_time(ss: list[Sample], front: bool) -> tuple[float, float | None]:
+    """Total time of lock runs on one axle, and where the first one started.
+
+    A run is a stretch of braking at speed with a loaded wheel (nearly) stopped,
+    allowing ``LOCK_GAP_S`` gaps. It counts if it lasts ``LOCKUP_MIN_S`` and
+    began before the car was already sideways (a spin stops wheels too).
+    """
+    total, where = 0.0, None
+    start = last = end = 0.0
+    start_dist = 0.0
+    valid = active = False
+    for s in ss:
+        locked = (
+            s.brk >= BRAKE_ON
+            and s.v >= LOCK_MIN_SPEED
+            and _is_locked(s.ws_f if front else s.ws_r, s.sr_f_min if front else s.sr_r_min)
+        )
+        if locked:
+            if not active or s.t - last > LOCK_GAP_S:
+                if active and valid and end - start >= LOCKUP_MIN_S:
+                    total += end - start
+                    where = start_dist if where is None else where
+                active = True
+                start, start_dist = s.t, s.dist
+                valid = s.sa_r < LOCK_MAX_REAR_SLIP_ANGLE
+            last, end = s.t, s.t + s.dt
+    if active and valid and end - start >= LOCKUP_MIN_S:
+        total += end - start
+        where = start_dist if where is None else where
+    return total, where
+
+
 def analyze_brake(w: BrakeWindow) -> BrakeRecord:
     ss = w.samples
     rec = BrakeRecord(
@@ -326,16 +379,9 @@ def analyze_brake(w: BrakeWindow) -> BrakeRecord:
         peak_decel_g=max(0.0, -min(s.lon_g for s in ss)),
         partial=w.partial,
     )
+    rec.lock_front_s, rec.lock_front_dist = _lock_time(ss, front=True)
+    rec.lock_rear_s, rec.lock_rear_dist = _lock_time(ss, front=False)
     for s in ss:
-        if s.brk >= BRAKE_ON:
-            if s.sr_f_min <= LOCKUP_SLIP_RATIO:
-                rec.lock_front_s += s.dt
-                if rec.lock_front_dist is None:
-                    rec.lock_front_dist = s.dist
-            if s.sr_r_min <= LOCKUP_SLIP_RATIO:
-                rec.lock_rear_s += s.dt
-                if rec.lock_rear_dist is None:
-                    rec.lock_rear_dist = s.dist
         if (
             s.brk >= HEAVY_BRAKE
             and abs(s.lat_g) < CORNER_ENTER_G

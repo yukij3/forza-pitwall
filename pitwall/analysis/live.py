@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from pitwall.telemetry.model import Frame
 
 from .assess import Evidence, assess_all, build_board
+from .power import PowerCurve
 from .records import (
     BottomingEvent,
     BrakeRecord,
@@ -61,12 +62,13 @@ class LiveAnalyzer:
         self._builder = SampleBuilder()
         self._seg = Segmenter()
         self._fit = YawFit()
+        self._power = PowerCurve()
         self._corners: deque[CornerRecord] = deque(maxlen=self.window_corners)
         self._brakes: deque[BrakeRecord] = deque(maxlen=self.window_corners)
         self._straights: deque[StraightRecord] = deque(maxlen=STRAIGHTS_KEPT)
         self._bottoming: deque[BottomingEvent] = deque(maxlen=MAX_KEPT_EVENTS)
         self._tire_chunks: deque[tuple[float, ...]] = deque(maxlen=MAX_TIRE_CHUNKS)
-        self._chunk = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # 4 temp sums (°F), n, seconds
+        self._chunk = [0.0, 0.0, 0.0, 0.0, 0.0]  # 4 time-weighted temp sums (°F), seconds
         self._top_gear = 0
         self._corners_seen = 0
         self._status: dict[str, str] = {}
@@ -80,23 +82,35 @@ class LiveAnalyzer:
         """Feed one frame; returns a new snapshot when the board was re-rated."""
         if not frame.is_race_on:
             return None
-        s = self._builder.push(frame)
-        if s is None:
+        changed = False
+        for s in self._builder.push(frame):
+            changed = self._process(s) or changed
+        if not changed:
             return None
+        self._snapshot = self._build()
+        return self._snapshot
+
+    def _process(self, s: Sample) -> bool:
+        """Per-sample bookkeeping; True if a segment completed and changed the window."""
+        changed = False
+        if s.cut:  # rewind or restart: drop whatever was open across it
+            for seg in self._seg.flush():
+                changed = self._take(seg) or changed
+            self._seg.reset()
         self._last = s
         self._fit.add(s)
+        self._power.add(s)
 
-        chunk = self._chunk
-        t = s.temps
-        chunk[0] += t[0]
-        chunk[1] += t[1]
-        chunk[2] += t[2]
-        chunk[3] += t[3]
-        chunk[4] += 1
-        chunk[5] += s.dt
-        if chunk[5] >= TIRE_CHUNK_S:
-            self._tire_chunks.append((s.t, *chunk[:4], chunk[4]))
-            self._chunk = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        chunk = self._chunk  # time-weighted tire temperature sums, then weight
+        t, dt = s.temps, s.dt
+        chunk[0] += t[0] * dt
+        chunk[1] += t[1] * dt
+        chunk[2] += t[2] * dt
+        chunk[3] += t[3] * dt
+        chunk[4] += dt
+        if chunk[4] >= TIRE_CHUNK_S:
+            self._tire_chunks.append((s.t, *chunk))
+            self._chunk = [0.0, 0.0, 0.0, 0.0, 0.0]
 
         if self._top_gear < s.gear <= _MAX_FORWARD_GEAR:
             self._top_gear = s.gear
@@ -113,14 +127,10 @@ class LiveAnalyzer:
 
         segs = self._seg.push(s)
         if not segs:
-            return None
-        changed = False
+            return changed
         for seg in segs:
             changed = self._take(seg) or changed
-        if not changed:
-            return None
-        self._snapshot = self._build()
-        return self._snapshot
+        return changed
 
     def snapshot(self) -> LiveAnalysis:
         return self._snapshot
@@ -164,11 +174,10 @@ class LiveAnalyzer:
         chunks = self._tire_chunks
         while chunks and chunks[0][0] < horizon:
             chunks.popleft()
-        n = sum(c[5] for c in chunks)
-        if not n:
+        seconds = sum(c[5] for c in chunks)
+        if not seconds:
             return None, 0.0
-        seconds = len(chunks) * TIRE_CHUNK_S
-        avg = tuple(f_to_c(sum(c[k] for c in chunks) / n) for k in range(1, 5))
+        avg = tuple(f_to_c(sum(c[k] for c in chunks) / seconds) for k in range(1, 5))
         return avg, seconds  # type: ignore[return-value]
 
     def _build(self) -> LiveAnalysis:
@@ -187,6 +196,7 @@ class LiveAnalyzer:
             tire_seconds=tire_s,
             top_gear=self._top_gear,
             drivetrain=self.drivetrain,
+            peak_power_rpm=self._power.peak_rpm_pct(),
         )
         items, focus = build_board(
             assess_all(ev),

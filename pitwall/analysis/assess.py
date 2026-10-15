@@ -27,12 +27,16 @@ from .thresholds import (
     BANDS,
     GEAR_SETTLED_S,
     GEARING_LONG_CONFIDENCE,
+    GEARING_PEAK_BAD,
+    GEARING_PEAK_OK,
     GEARING_SHORT_CONFIDENCE,
     LIMITER_BAD_S,
     LIMITER_OK_S,
     LONG_STRAIGHT_MIN_M,
     MIN_EVENTS_FOR_WARN,
     PHASE_EVENT_MIN_S,
+    PINNED_CONFIDENCE_FACTOR,
+    PINNED_SHARE_CAVEAT,
     STATUS_HYSTERESIS,
     TIRE_COLD_C,
     TIRE_CONFIDENCE,
@@ -74,6 +78,7 @@ class Evidence:
     top_gear: int
     drivetrain: str
     corner_at: Callable[[float], int | None] = field(default=lambda _d: None)
+    peak_power_rpm: float | None = None  # fraction of max rpm, once proven
 
 
 @dataclass(slots=True)
@@ -193,6 +198,8 @@ def _balance(
     confidence = (
         0.3 + 0.2 * sign_share + 0.2 * yaw_agree + 0.2 * len(flagged) / n + 0.1 * min(1.0, n / 8)
     )
+    seconds = sum(c.phase(phase).seconds for c in cs)
+    pinned = sum(c.phase(phase).pinned_s for c in cs) / seconds if seconds > 0 else 0.0
 
     word = "understeer" if under else "oversteer"
     axle = "front" if under else "rear"
@@ -204,6 +211,12 @@ def _balance(
         cs_count = sum(1 for c in cs if c.phase(phase).countersteer_s >= 0.1)
         if cs_count:
             evidence += f", counter-steer in {cs_count}"
+    elif pinned >= PINNED_SHARE_CAVEAT:
+        confidence *= PINNED_CONFIDENCE_FACTOR
+        evidence += (
+            f"; steering at full lock {pinned:.0%} of the time, so part of the front slip "
+            "is the steering input, not the set-up"
+        )
     shown = flagged or sorted(cs, key=lambda c: -abs(c.phase(phase).balance or 0.0))[:3]
     where = [Where(c.apex_dist, c.number or None) for c in shown]
     return Assessment(
@@ -356,9 +369,16 @@ def _bottoming(ev: Evidence, axle: str) -> Assessment:
 
 
 # --- Gearing ----------------------------------------------------------------------------------
+_PEAK_BANDS = Bands(GEARING_PEAK_OK, None, GEARING_PEAK_BAD, None, 1)
+
+
 def _gearing(ev: Evidence) -> Assessment:
     item = "gearing"
-    target = "85–98% rpm in top gear, no limiter"
+    peak = ev.peak_power_rpm
+    if peak is None:
+        target = "85–98% rpm in top gear, no limiter"
+    else:
+        target = f"at or past peak power ({peak:.0%} rpm) in top gear, no limiter"
     sts = [s for s in ev.straights if not s.cut_end and s.length >= LONG_STRAIGHT_MIN_M]
     if not sts:
         return Assessment(item, None, "No long straight yet", target, 0, 0.0, 0.0)
@@ -388,11 +408,18 @@ def _gearing(ev: Evidence) -> Assessment:
         )
     value_text = f"{gear} at {st.end_rpm_pct:.0%} rpm"
     if in_top and st.gear_time_s >= GEAR_SETTLED_S:
-        score = band_score(st.end_rpm_pct, BANDS[item])
-        evidence = (
-            f"The top gear used ({gear}) only reaches {st.end_rpm_pct:.0%} of max rpm at the "
-            f"end of the {st.length:.0f} m straight"
-        )
+        if peak is None:
+            score = band_score(st.end_rpm_pct, BANDS[item])
+            evidence = (
+                f"The top gear used ({gear}) only reaches {st.end_rpm_pct:.0%} of max rpm at "
+                f"the end of the {st.length:.0f} m straight"
+            )
+        else:
+            score = band_score(st.end_rpm_pct / peak, _PEAK_BANDS)
+            evidence = (
+                f"The top gear used ({gear}) only reaches {st.end_rpm_pct:.0%} of max rpm at "
+                f"the end of the {st.length:.0f} m straight; peak power is at {peak:.0%}"
+            )
         return Assessment(
             item,
             st.end_rpm_pct,

@@ -13,10 +13,23 @@ from dataclasses import dataclass
 G = 9.80665
 
 # --- Signal conditioning -----------------------------------------------------
-SMOOTH_SAMPLES = 7  # centred moving average for lateral/long. g, yaw rate, steer
-DEFAULT_DT_S = 1 / 60
-MAX_FRAME_GAP_S = 0.25  # larger gaps between packets are treated as one frame
+# Every window is in seconds, never in frames: the PC game sends 120-160 packets/s.
+SMOOTH_WINDOW_S = 0.12  # centred moving average for lateral/long. g, yaw rate, steer
+DEFAULT_DT_S = 1 / 60  # only until the first real time step is known
+MAX_FRAME_GAP_S = 0.25  # larger gaps between packets count as one ordinary step
+# Discontinuities. A rewind steps the race clock back 3-7 s (after a 4-8 s
+# pause with no packets); a restart resets it. Segments never span either.
+REWIND_MIN_S = 0.5  # race clock stepping back more than this = rewind or restart
+JUMP_GAP_S = 1.0  # race clock jumping forward more than this = data dropout
 SAMPLE_BUFFER_S = 25.0  # history kept by the streaming segmenter
+
+# --- Wheels ----------------------------------------------------------------------
+WHEEL_LOADED_TRAVEL = 0.05  # suspension travel below this = wheel at full droop, no load
+RADIUS_MIN_SPEED = 15.0  # m/s; rolling radius is learned from free-rolling wheels ...
+RADIUS_MAX_SLIP_RATIO = 0.05  # ... with almost no longitudinal slip ...
+RADIUS_MAX_SLIP_ANGLE = 0.5  # ... and little lateral slip, no brake
+RADIUS_MIN_SAMPLES = 30
+RADIUS_KEEP = 301  # median over the most recent estimates per wheel
 
 # --- Pedals -------------------------------------------------------------------
 FULL_THROTTLE = 0.95
@@ -45,17 +58,38 @@ BALANCE_YAW_WEIGHT = 0.3  # yaw deficit versus the yaw expected from speed and s
 BALANCE_FLAG = 0.20  # per-sample balance that counts as an understeer/oversteer moment
 PHASE_EVENT_MIN_S = 0.12  # flagged time in a phase needed to count a corner as affected
 COUNTERSTEER_MIN = 0.03  # steering against the turn (normalised) = oversteer correction
+# Steering held at (nearly) full lock: with a gamepad the front slip angle then
+# follows the stick as much as the set-up, so understeer readings built mostly
+# from such samples get less confidence and say why.
+STEER_PINNED = 0.95
+PINNED_SHARE_CAVEAT = 0.5
+PINNED_CONFIDENCE_FACTOR = 0.6
 YAW_FIT_MIN_LAT_G = 0.20
 YAW_FIT_MAX_SLIP = 0.85  # only fit the steering model while both axles grip
 YAW_FIT_MIN_STEER = 0.02
 YAW_FIT_MIN_CURVATURE = 0.002  # 1/m (radius < 500 m)
-YAW_FIT_MIN_SAMPLES = 60
+YAW_FIT_MIN_S = 1.0  # seconds of in-grip cornering before the yaw model is used
+# The yaw model assumes the steering input is proportional to the wheel angle.
+# With a gamepad the game sets the wheel angle itself (the stick sits at full
+# lock in most corners), so steer/curvature grows with the input instead of
+# staying constant. If, at the fit's mean speed, steer/curvature at 75 % input
+# is more than this multiple of the value at 25 % input, the model is not used.
+YAW_FIT_MAX_NONLINEARITY = 1.5
 
 # --- Wheelspin, lockups, braking stability -----------------------------------
 WHEELSPIN_SLIP_RATIO = 1.0
 WHEELSPIN_MIN_S = 0.10
-LOCKUP_SLIP_RATIO = -1.0
-LOCKUP_MIN_S = 0.08
+# Lockups. With ABS the normalised slip ratio sits around -0.5 and dips past -1
+# for a few hundredths of a second all the time (normalised 1.0 is only ~13 %
+# real slip), so "slip ratio < -1" is not a lock. A lock is a loaded wheel that
+# (nearly) stops: wheel speed at or below LOCK_WHEEL_SPEED_RATIO of road speed,
+# or, before the wheel radius is known, a slip ratio this deep.
+LOCK_WHEEL_SPEED_RATIO = 0.35
+LOCK_DEEP_SLIP_RATIO = -3.0
+LOCK_MIN_SPEED = 10.0  # m/s
+LOCK_MAX_REAR_SLIP_ANGLE = 1.5  # a lock must start before the car is already sideways
+LOCK_GAP_S = 0.03  # flagged samples closer than this belong to one lock
+LOCKUP_MIN_S = 0.10  # a lock has to last this long
 BRAKE_ZONE_MIN_S = 0.40
 BRAKE_RELEASE_GAP_S = 0.15
 UNSTABLE_REAR_SLIP = 0.80  # rear slip angle while braking in a straight line
@@ -77,6 +111,24 @@ END_OF_STRAIGHT_S = 0.5  # rpm at the end of a straight = max over its last 0.5 
 GEAR_SETTLED_S = 2.5  # time in the final gear before "rpm at the end" is meaningful
 LIMITER_OK_S = 0.3  # limiter time on the longest straight still considered fine
 LIMITER_BAD_S = 1.0
+# Peak power is learned from full-throttle samples (Data Out sends power), so
+# "gearing too long" means top gear ends the longest straight below the
+# peak-power rpm, not below a fixed share of max rpm.
+POWER_MIN_THROTTLE = 0.95
+POWER_MIN_RPM_PCT = 0.30
+POWER_MIN_SPEED = 10.0  # m/s; excludes revving on the grid
+POWER_BIN = 0.02  # rpm (fraction of max) bin width
+POWER_BIN_KEEP = 200  # recent samples per bin (median)
+POWER_MIN_BIN_S = 0.3  # seconds of data before a bin counts
+POWER_MIN_BINS = 5
+# A higher-rpm bin this far below the best bin proves it is the peak (bin
+# medians near the peak are stable to ~0.2 %; automatic gearboxes often shift
+# just past the peak, so the visible drop is small).
+POWER_PAST_PEAK_DROP = 0.005
+# end-of-straight rpm divided by the peak-power rpm: OK at >= 0.97 (power is
+# within ~2 % of peak there), bad at <= 0.85
+GEARING_PEAK_OK = 0.97
+GEARING_PEAK_BAD = 0.85
 
 # --- Tires ---------------------------------------------------------------------
 TIRE_HOT_C = 105.0

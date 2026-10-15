@@ -8,6 +8,7 @@ from statistics import median
 from pitwall.telemetry.model import Frame
 
 from .assess import Evidence, assess_all, build_board, finding_from, recommend
+from .power import PowerCurve
 from .records import (
     BottomingEvent,
     BrakeRecord,
@@ -82,14 +83,15 @@ def _tire_avg(samples: Sequence[Sample]) -> tuple[float, float, float, float] | 
     if not samples:
         return None
     sums = [0.0, 0.0, 0.0, 0.0]
+    total = 0.0
     for s in samples:
-        t = s.temps
-        sums[0] += t[0]
-        sums[1] += t[1]
-        sums[2] += t[2]
-        sums[3] += t[3]
-    n = len(samples)
-    return tuple(f_to_c(x / n) for x in sums)  # type: ignore[return-value]
+        t, dt = s.temps, s.dt
+        sums[0] += t[0] * dt
+        sums[1] += t[1] * dt
+        sums[2] += t[2] * dt
+        sums[3] += t[3] * dt
+        total += dt
+    return tuple(f_to_c(x / total) for x in sums)  # type: ignore[return-value]
 
 
 def _phase_median(corners: Sequence[CornerRecord], phase: str) -> float | None:
@@ -170,11 +172,10 @@ def _metrics(
             m.end_of_straight_rpm_pct = st.end_rpm_pct
             m.end_of_straight_gear = st.end_gear
 
-    temps = [[f_to_c(t) for t in s.temps] for s in ss]
+    avg = _tire_avg(ss) or (0.0, 0.0, 0.0, 0.0)
     for k, w in enumerate(_WHEELS):
-        col_k = [t[k] for t in temps]
-        m.tire_temp_avg[w] = sum(col_k) / len(col_k)
-        m.tire_temp_max[w] = max(col_k)
+        m.tire_temp_avg[w] = avg[k]
+        m.tire_temp_max[w] = f_to_c(max(s.temps[k] for s in ss))
     first, last = frames[0].tire_wear, frames[-1].tire_wear
     m.tire_wear_delta = {w: abs(last[k] - first[k]) for k, w in enumerate(_WHEELS)}
     return m
@@ -200,16 +201,22 @@ def analyze_lap(frames: Sequence[Frame], ctx: LapContext) -> LapAnalysis:
     tune_values = dict(ctx.tune_values or {})
 
     builder, seg, fit, col = SampleBuilder(), Segmenter(), YawFit(), _Collected()
-    for f in frames:
-        s = builder.push(f)
-        if s is not None:
-            col.samples.append(s)
-            fit.add(s)
-            col.take(seg.push(s))
-    for s in builder.flush():
+    power = PowerCurve()
+
+    def take(s: Sample) -> None:
+        if s.cut:  # rewind or restart: nothing open may span it
+            col.take(seg.flush())
+            seg.reset()
         col.samples.append(s)
         fit.add(s)
+        power.add(s)
         col.take(seg.push(s))
+
+    for f in frames:
+        for s in builder.push(f):
+            take(s)
+    for s in builder.flush():
+        take(s)
     col.take(seg.flush())
 
     model = fit.model()
@@ -223,6 +230,7 @@ def analyze_lap(frames: Sequence[Frame], ctx: LapContext) -> LapAnalysis:
 
     lap_time = _lap_time(frames, ctx, col)
     metrics = _metrics(frames, col, corners, brakes, lap_time)
+    metrics.peak_power_rpm_pct = power.peak_rpm_pct()
     ev = Evidence(
         corners=corners,
         brakes=brakes,
@@ -232,6 +240,7 @@ def analyze_lap(frames: Sequence[Frame], ctx: LapContext) -> LapAnalysis:
         tire_seconds=sum(s.dt for s in col.samples),
         top_gear=metrics.top_gear_used,
         drivetrain=drivetrain,
+        peak_power_rpm=metrics.peak_power_rpm_pct,
         corner_at=_corner_lookup([c for c in corners if not c.partial]),
     )
     assessments = assess_all(ev)
