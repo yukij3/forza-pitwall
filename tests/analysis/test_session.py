@@ -142,6 +142,8 @@ def test_verdict_hurt_suggests_a_revert() -> None:
     assert "new: mid-corner understeer" in v.text
     nc = sa.next_change
     assert nc is not None and nc.id == "revert-arb-front"
+    assert nc.reason.startswith("Last change hurt · ") and len(nc.reason) <= 64
+    assert nc.detail and "Undo it" in nc.detail
     assert (nc.setting, nc.direction, nc.step, nc.suggested_value) == (
         "arb.front",
         "decrease",
@@ -218,9 +220,10 @@ def test_session_to_dict_is_json_ready() -> None:
         "suggested_value",
         "text",
         "reason",
+        "detail",
         "confidence",
         "priority",
     }
     assert rec["text"] == "Differential → Acceleration (Rear): −5%"
     assert rec["section"] == "Differential" and rec["axle"] == "Rear" and rec["step_unit"] == "%"
-    assert set(data["findings"][0]) >= {"id", "title", "severity", "evidence", "where"}
+    assert set(data["findings"][0]) >= {"id", "title", "severity", "evidence", "detail", "where"}

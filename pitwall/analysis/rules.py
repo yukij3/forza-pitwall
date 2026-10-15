@@ -519,6 +519,7 @@ def build_recommendation(
     step: float | None = None,
     suggested: float | None = None,
     rec_id: str | None = None,
+    detail: str | None = None,
 ) -> Recommendation:
     setting = BY_KEY[change.setting]
     if step is None:
@@ -543,6 +544,7 @@ def build_recommendation(
         reason=reason,
         confidence=max(0.0, min(1.0, confidence)),
         priority=priority,
+        detail=detail,
     )
 
 
@@ -556,5 +558,6 @@ def describe_change(setting_key: str, from_value: float | None, to_value: float 
 
 
 def reason_text(evidence: str, why: str) -> str:
+    """Evidence sentence(s) plus why the change helps: a recommendation's ``detail``."""
     evidence = evidence.rstrip(".")
     return f"{evidence}. {why[0].upper()}{why[1:]}."
