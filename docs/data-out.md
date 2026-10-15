@@ -16,7 +16,8 @@ In the game: **Settings → Gameplay & HUD → "UDP Race Telemetry"**.
 | Data Out IP Port | Pitwall's UDP port, `5300` by default (`PITWALL_UDP_PORT`) |
 | Data Out Packet Format | **Dash** (sometimes labelled "Car Dash"). "Sled" lacks speed, laps and inputs. |
 
-The game starts sending as soon as you are on track, 60 packets per second.
+The game starts sending as soon as you are on track: 60 packets per second
+on console, 120–160 on PC (the rate follows the frame rate).
 Make sure the firewall on the Pitwall machine allows incoming UDP on that port.
 `GET /api/status` shows `receiver.packets_per_sec`; if packets arrive in the
 wrong format, `receiver.ignored_packets` and `receiver.last_ignored_size` say so
@@ -43,7 +44,7 @@ front-left, front-right, rear-left, rear-right (4 values each).
 | Offset | Type | Field | Notes |
 |---|---|---|---|
 | 0 | S32 | IsRaceOn | 1 on track, 0 in menus or paused |
-| 4 | U32 | TimestampMS | game clock, wraps around |
+| 4 | U32 | TimestampMS | game clock in 60 Hz steps, wraps around; repeats when packets come faster |
 | 8 | F32 | EngineMaxRpm | |
 | 12 | F32 | EngineIdleRpm | |
 | 16 | F32 | CurrentEngineRpm | |
@@ -125,9 +126,21 @@ front-left, front-right, rear-left, rear-right (4 values each).
 
 ## Behaviour worth knowing
 
-- `IsRaceOn` is 0 in menus and while paused; Pitwall doesn't record those
-  packets.
-- A rewind makes `CurrentLap` and `DistanceTraveled` jump backwards, and can
-  move `LapNumber` back by one if it crosses the line.
-- `LastLap` updates when the car crosses the line, sometimes a frame or two
-  after `LapNumber` changes; Pitwall waits for it.
+Seen in real recordings (Forza Motorsport 2023, PC):
+
+- `IsRaceOn` is 0 in menus, while paused, while the rewind screen is up, and
+  from the chequered flag on.
+- Before a race starts, packets arrive with `IsRaceOn` = 1 but `CurrentLap` at
+  exactly 0, the handbrake on and `DistanceTraveled` at minus one lap length.
+- At the start, `CurrentRaceTime` and `CurrentLap` start from 0 with the car on
+  the grid, behind the line (`DistanceTraveled` negative). When the car first
+  crosses the line, `CurrentLap` restarts from 0 but `LapNumber` stays 0.
+- A rewind sends race-off packets for a few seconds, then `CurrentRaceTime`,
+  `CurrentLap` and `DistanceTraveled` continue from an earlier point. If it
+  crosses the line backwards, `LapNumber` goes back by one.
+- `LastLap` and `BestLap` change on the packet where `LapNumber` goes up.
+- At the finish of a race, `LapNumber` does not go up: the game switches
+  `IsRaceOn` off as the car reaches the line.
+- `TimestampMS` advances in 60 Hz steps, so at 120–160 packets per second
+  consecutive packets often share it; `CurrentRaceTime` and `CurrentLap` do
+  advance on every packet.

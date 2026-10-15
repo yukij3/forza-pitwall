@@ -11,7 +11,7 @@ from pitwall.storage.db import Store
 from pitwall.tune.settings import SETTINGS
 
 from .conftest import AppFactory
-from .helpers import fake_baselines, inject, race_off, synth_laps
+from .helpers import fake_baselines, inject, race_off, race_session, synth_laps
 
 
 def error_code(response) -> str:
@@ -272,3 +272,15 @@ def test_baseline_for_car_on_track(app_factory: AppFactory) -> None:
     inject(client, synth_laps(0, tail_s=0.5, car_ordinal=555))  # unknown car, RWD
     assert client.get("/api/baseline").json() == {"match": None, "baseline": None}
     assert client.get("/api/status").json()["car"]["name"] is None
+
+
+def test_trace_time_axis_at_pc_packet_rates(client: TestClient) -> None:
+    """125 packets/s with a 60 Hz timestamp: the trace still spans the lap time."""
+    client.post("/api/recording/start")
+    inject(client, race_session(laps=2, hz=125.0))
+    session_id = client.get("/api/status").json()["recording"]["session_id"]
+    laps = client.get(f"/api/sessions/{session_id}").json()["laps"]
+    assert [lap["kind"] for lap in laps] == ["flying", "flying"]  # finish seen live
+    trace = client.get(f"/api/laps/{laps[0]['id']}/trace", params={"hz": 10}).json()
+    assert trace["t"][-1] == pytest.approx(10.0, abs=0.15)
+    assert trace["distance"][-1] == pytest.approx(400.0, abs=6)

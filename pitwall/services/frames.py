@@ -8,6 +8,7 @@ from typing import Any
 
 from pitwall.storage.db import Store
 from pitwall.storage.rawlog import iter_records
+from pitwall.telemetry.laps import is_lap_frame
 from pitwall.telemetry.model import Frame
 from pitwall.telemetry.packet import PacketError, parse
 
@@ -46,10 +47,13 @@ class LapFrames:
         path = self.store.raw_path(session)
         if path is None or not path.exists():
             return []
+        first, last = int(lap["first_frame"]), int(lap["last_frame"])
         frames: list[Frame] = []
-        for recv_time, payload in iter_records(path, lap["first_frame"], lap["frame_count"]):
+        for recv_time, payload in iter_records(path, first, last - first + 1):
             try:
-                frames.append(parse(payload, recv_time))
+                frame = parse(payload, recv_time)
             except PacketError:
                 continue
+            if is_lap_frame(frame):  # skip race-off markers and pre-race packets
+                frames.append(frame)
         return frames

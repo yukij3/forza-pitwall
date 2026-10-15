@@ -9,10 +9,7 @@ from pitwall.telemetry import canonical as cu
 from pitwall.telemetry.model import Frame
 
 _INTERNAL_SESSION_FIELDS = ("raw_file", "frame_count")
-_INTERNAL_LAP_FIELDS = ("first_frame",)
-
-MAX_FRAME_DT = 0.25  # clamp game-clock steps (pauses, glitches) when building a time axis
-NOMINAL_DT = 1.0 / 60.0
+_INTERNAL_LAP_FIELDS = ("first_frame", "last_frame")
 
 
 def public_session(session: dict[str, Any], *, recording_id: int | None) -> dict[str, Any]:
@@ -89,19 +86,17 @@ TRACE_KEYS = ("hz", "t", "distance", *list(_TRACE_CHANNELS)[:4], "gear", *list(_
 
 
 def frame_times(frames: Sequence[Frame]) -> list[float]:
-    """Monotonic time axis for a lap from the game clock (``timestamp_ms``).
+    """Non-decreasing time axis for a lap, from the game's lap timer.
 
-    Starts at the first frame's ``current_lap``; steps that are negative or
-    implausibly long (pauses, clock wrap glitches) count as one frame.
+    ``current_lap`` advances with every packet whatever the packet rate (unlike
+    ``timestamp_ms``, which ticks at 60 Hz and repeats on PC). Steps backwards
+    (rewinds) count as zero, so the axis never goes back.
     """
     if not frames:
         return []
     times = [frames[0].current_lap]
     for prev, cur in zip(frames, frames[1:], strict=False):
-        dt = ((cur.timestamp_ms - prev.timestamp_ms) & 0xFFFFFFFF) / 1000.0
-        if dt <= 0 or dt > MAX_FRAME_DT:
-            dt = NOMINAL_DT
-        times.append(times[-1] + dt)
+        times.append(times[-1] + max(0.0, cur.current_lap - prev.current_lap))
     return times
 
 
