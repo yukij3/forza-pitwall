@@ -111,7 +111,7 @@ def frame_times(frames: Sequence[Frame]) -> list[float]:
 def build_trace(frames: Sequence[Frame], hz: float) -> dict[str, Any]:
     """Resample a lap to ``hz`` samples per second (parallel arrays)."""
     out: dict[str, Any] = {key: [] for key in TRACE_KEYS}
-    out["hz"] = hz
+    out["hz"] = int(hz) if float(hz).is_integer() else hz
     if not frames:
         return out
     times = frame_times(frames)

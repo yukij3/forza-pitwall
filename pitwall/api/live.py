@@ -142,6 +142,8 @@ class LiveHub:
         finally:
             self._clients.discard(q)
             waiter.cancel()
+            if waiter.done() and not waiter.cancelled():
+                waiter.exception()  # retrieved, so asyncio doesn't log it
 
 
 async def _wait_disconnect(websocket: WebSocket) -> None:

@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
+from pitwall.app import create_app
+from pitwall.config import Config
+from pitwall.storage.db import Store
 from pitwall.tune.settings import SETTINGS
 
 from .helpers import inject, race_off, synth_laps
@@ -269,3 +274,15 @@ def test_unknown_api_path_is_json_404(client: TestClient) -> None:
     response = client.get("/api/nope")
     assert response.status_code == 404 and error_code(response) == "not_found"
     assert error_code(client.post("/api/status")) in {"not_found", "method_not_allowed"}
+
+
+def test_shutdown_finishes_an_active_recording(tmp_path: Path) -> None:
+    config = Config(data_dir=tmp_path / "data", web_dir=tmp_path / "no-web", live_hz=50.0)
+    with TestClient(create_app(config, udp=False)) as client:
+        client.post("/api/recording/start")
+        inject(client, synth_laps(1))
+    store = Store(tmp_path / "data")
+    session = store.list_sessions()[0]
+    assert session["stopped_at"] is not None
+    assert [lap["kind"] for lap in store.list_laps(session["id"])] == ["flying", "partial"]
+    store.close()

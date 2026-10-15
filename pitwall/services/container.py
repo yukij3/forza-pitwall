@@ -59,14 +59,14 @@ class Services:
         self.spawn(self._housekeeping())
 
     async def stop(self) -> None:
-        for task in list(self._tasks):
-            task.cancel()
-        for task in list(self._tasks):
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await task
         try:
-            self.recorder.close()
+            self.recorder.close()  # finishes the last lap first
         finally:
+            for task in list(self._tasks):
+                task.cancel()
+            for task in list(self._tasks):
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await task
             self.receiver.close()
             self.live_analysis.stop()
             self.analysis.close()
