@@ -23,3 +23,6 @@ AGENTS.md
 /notes/
 .impeccable/
 .claude/
+
+# Owner-specific deployment scripts
+/local/
