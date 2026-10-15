@@ -25,17 +25,14 @@ def public_lap(lap: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in lap.items() if k not in _INTERNAL_LAP_FIELDS}
 
 
-def public_tune(tune: dict[str, Any], *, with_values: bool = True) -> dict[str, Any]:
-    if with_values:
-        return dict(tune)
-    return {k: v for k, v in tune.items() if k != "values"}
-
-
-def car_status(frame: Frame | None) -> dict[str, Any] | None:
+def car_status(frame: Frame | None, info: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """The car on track; ``info`` (name/division) comes from the baselines module."""
     if frame is None or frame.car_ordinal == 0:
         return None
     return {
         "ordinal": frame.car_ordinal,
+        "name": (info or {}).get("name"),
+        "division": (info or {}).get("division"),
         "class": frame.car_class,
         "class_name": cu.class_name(frame.car_pi),
         "pi": frame.car_pi,

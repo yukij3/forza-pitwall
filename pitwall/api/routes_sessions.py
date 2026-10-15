@@ -13,7 +13,6 @@ from pydantic import BaseModel, ConfigDict
 from pitwall.api.convert import build_trace, public_lap, public_session
 from pitwall.api.deps import ServicesDep
 from pitwall.api.errors import ApiError
-from pitwall.storage.db import NotFound
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +22,6 @@ router = APIRouter(prefix="/api")
 class SessionPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     note: str | None = None
-    tune_id: int | None = None
 
 
 @router.get("/sessions")
@@ -48,13 +46,6 @@ async def patch_session(
     updates: dict[str, Any] = {}
     if "note" in body.model_fields_set:
         updates["note"] = body.note or ""
-    if "tune_id" in body.model_fields_set:
-        if body.tune_id is not None:
-            try:
-                services.store.get_tune(body.tune_id)
-            except NotFound:
-                raise ApiError(422, "unknown_tune", f"tune {body.tune_id} not found") from None
-        updates["tune_id"] = body.tune_id
     session = services.store.update_session(session_id, **updates)
     return public_session(session, recording_id=services.recorder.session_id)
 

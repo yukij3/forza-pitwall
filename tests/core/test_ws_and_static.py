@@ -22,7 +22,7 @@ def test_ws_status_on_connect_and_telemetry(client: TestClient) -> None:
     with client.websocket_connect("/ws/live") as ws:
         first = ws.receive_json()
         assert first["type"] == "status"
-        assert {"receiver", "recording", "car", "track_ordinal", "active_tune_id"} <= set(first)
+        assert {"receiver", "recording", "car", "track_ordinal"} == set(first) - {"type"}
 
         inject(client, synth_laps(0, tail_s=0.5))
         tele = receive_until(ws, "telemetry")

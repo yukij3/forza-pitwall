@@ -1,4 +1,4 @@
-"""SQLite storage: sessions, laps, tunes, settings and cached analysis results.
+"""SQLite storage: sessions, laps, settings and cached analysis results.
 
 One connection guarded by a lock, so the event loop and the analysis worker
 threads can share it. Raw packets live next to the database in ``raw/``
@@ -36,7 +36,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     car_class     INTEGER,
     drivetrain    TEXT,
     track_ordinal INTEGER,
-    tune_id       INTEGER REFERENCES tunes(id) ON DELETE SET NULL,
     note          TEXT NOT NULL DEFAULT '',
     raw_file      TEXT,
     frame_count   INTEGER NOT NULL DEFAULT 0
@@ -54,17 +53,6 @@ CREATE TABLE IF NOT EXISTS laps (
     started_at     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS laps_session ON laps(session_id);
-CREATE TABLE IF NOT EXISTS tunes (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    name         TEXT NOT NULL,
-    car_ordinal  INTEGER,
-    unit_system  TEXT NOT NULL,
-    values_json  TEXT NOT NULL,
-    parent_id    INTEGER REFERENCES tunes(id),
-    changes_json TEXT NOT NULL DEFAULT '[]',
-    note         TEXT NOT NULL DEFAULT '',
-    created_at   TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS kv (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -143,11 +131,10 @@ class Store:
         name = session.get("raw_file")
         return self.data_dir / name if name else None
 
-    def create_session(self, *, started_at: str, tune_id: int | None, note: str) -> dict[str, Any]:
+    def create_session(self, *, started_at: str, note: str) -> dict[str, Any]:
         with self._lock:
             cur = self._db.execute(
-                "INSERT INTO sessions (started_at, tune_id, note) VALUES (?, ?, ?)",
-                (started_at, tune_id, note),
+                "INSERT INTO sessions (started_at, note) VALUES (?, ?)", (started_at, note)
             )
             session_id = int(cur.lastrowid or 0)
             raw_file = f"{RAW_DIR}/session-{session_id}.pitwall"
@@ -196,7 +183,7 @@ class Store:
         return [_session_dict(r) for r in rows]
 
     def update_session(self, session_id: int, **fields: Any) -> dict[str, Any]:
-        allowed = {"note", "tune_id"}
+        allowed = {"note"}
         updates = {k: v for k, v in fields.items() if k in allowed}
         self.get_session(session_id)
         if updates:
@@ -231,17 +218,6 @@ class Store:
         raw = self.raw_path(session)
         if raw is not None:
             raw.unlink(missing_ok=True)
-
-    def previous_session(self, session: dict[str, Any]) -> dict[str, Any] | None:
-        """Most recent earlier session with the same car and track."""
-        if session.get("car_ordinal") is None:
-            return None
-        rows = self._query(
-            _SESSION_SELECT + " WHERE s.id < ? AND s.car_ordinal = ? AND s.track_ordinal IS ?"
-            " ORDER BY s.id DESC LIMIT 1",
-            (session["id"], session["car_ordinal"], session.get("track_ordinal")),
-        )
-        return _session_dict(rows[0]) if rows else None
 
     # --- laps ---------------------------------------------------------------
 
@@ -287,51 +263,7 @@ class Store:
         )
         return [_lap_dict(r) for r in rows]
 
-    # --- tunes --------------------------------------------------------------
-
-    def create_tune(
-        self,
-        *,
-        name: str,
-        car_ordinal: int | None,
-        unit_system: str,
-        values: dict[str, float],
-        parent_id: int | None,
-        changes: list[dict[str, Any]],
-        note: str,
-    ) -> dict[str, Any]:
-        cur = self._execute(
-            "INSERT INTO tunes (name, car_ordinal, unit_system, values_json, parent_id, "
-            "changes_json, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                name,
-                car_ordinal,
-                unit_system,
-                json.dumps(values),
-                parent_id,
-                json.dumps(changes),
-                note,
-                iso(),
-            ),
-        )
-        return self.get_tune(int(cur.lastrowid or 0))
-
-    def get_tune(self, tune_id: int) -> dict[str, Any]:
-        rows = self._query("SELECT * FROM tunes WHERE id = ?", (tune_id,))
-        if not rows:
-            raise NotFound(f"tune {tune_id}")
-        return _tune_dict(rows[0])
-
-    def list_tunes(self, car_ordinal: int | None = None) -> list[dict[str, Any]]:
-        if car_ordinal is None:
-            rows = self._query("SELECT * FROM tunes ORDER BY id DESC")
-        else:
-            rows = self._query(
-                "SELECT * FROM tunes WHERE car_ordinal = ? ORDER BY id DESC", (car_ordinal,)
-            )
-        return [_tune_dict(r) for r in rows]
-
-    # --- key/value state (settings, active tune) ----------------------------
+    # --- key/value state (settings) -------------------------------------------
 
     def get_kv(self, key: str, default: Any = None) -> Any:
         rows = self._query("SELECT value FROM kv WHERE key = ?", (key,))
@@ -355,12 +287,6 @@ class Store:
     def save_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
         self.set_kv("settings", settings)
         return self.get_settings()
-
-    def get_active_tune_id(self) -> int | None:
-        return self.get_kv("active_tune_id")
-
-    def set_active_tune_id(self, tune_id: int | None) -> None:
-        self.set_kv("active_tune_id", tune_id)
 
     # --- analysis cache -----------------------------------------------------
 
@@ -395,7 +321,6 @@ def _session_dict(row: sqlite3.Row) -> dict[str, Any]:
         "car_class_name": class_name(pi) if pi is not None else None,
         "drivetrain": row["drivetrain"],
         "track_ordinal": row["track_ordinal"],
-        "tune_id": row["tune_id"],
         "note": row["note"],
         "lap_count": row["lap_count"],
         "best_lap": row["best_lap"],
@@ -416,18 +341,4 @@ def _lap_dict(row: sqlite3.Row) -> dict[str, Any]:
         "frame_count": row["frame_count"],
         "first_frame": row["first_frame"],
         "started_at": row["started_at"],
-    }
-
-
-def _tune_dict(row: sqlite3.Row) -> dict[str, Any]:
-    return {
-        "id": row["id"],
-        "name": row["name"],
-        "car_ordinal": row["car_ordinal"],
-        "unit_system": row["unit_system"],
-        "values": json.loads(row["values_json"]),
-        "parent_id": row["parent_id"],
-        "changes": json.loads(row["changes_json"]),
-        "note": row["note"],
-        "created_at": row["created_at"],
     }

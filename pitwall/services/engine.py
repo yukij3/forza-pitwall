@@ -1,28 +1,34 @@
-"""Lazy access to the analysis engine (``pitwall.analysis``).
+"""Lazy access to optional modules (``pitwall.analysis``, ``pitwall.baselines``).
 
-The engine is optional at runtime: if it can't be imported, analysis endpoints
-answer 503 ``analysis_unavailable`` and the rest of the app keeps working.
+If such a module can't be imported, the endpoints that need it answer 503 and
+the rest of the app keeps working.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import logging
 from collections.abc import Callable, Mapping
 from types import ModuleType
 from typing import Any
 
-from pitwall.telemetry.model import Drivetrain
-
 log = logging.getLogger(__name__)
 
 ENGINE_MODULE = "pitwall.analysis"
 LIVE_MODULE = "pitwall.analysis.live"
+BASELINES_MODULE = "pitwall.baselines"
 
-DRIVETRAIN_CODES = {"FWD": Drivetrain.FWD, "RWD": Drivetrain.RWD, "AWD": Drivetrain.AWD}
+
+class ModuleUnavailable(RuntimeError):
+    pass
 
 
-class AnalysisUnavailable(RuntimeError):
+class AnalysisUnavailable(ModuleUnavailable):
+    pass
+
+
+class BaselinesUnavailable(ModuleUnavailable):
     pass
 
 
@@ -33,8 +39,15 @@ class AnalysisFailed(RuntimeError):
 class LazyModule:
     """Imports a module on first use and remembers the outcome."""
 
-    def __init__(self, name: str, loader: Callable[[str], ModuleType] | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        loader: Callable[[str], ModuleType] | None = None,
+        *,
+        error: type[ModuleUnavailable] = AnalysisUnavailable,
+    ) -> None:
         self.name = name
+        self.error = error
         self._loader = loader or importlib.import_module
         self._module: ModuleType | None = None
         self._tried = False
@@ -53,7 +66,7 @@ class LazyModule:
     def require(self) -> ModuleType:
         module = self.get()
         if module is None:
-            raise AnalysisUnavailable(f"{self.name} is not installed")
+            raise self.error(f"{self.name} is not installed")
         return module
 
     @property
@@ -61,14 +74,15 @@ class LazyModule:
         return self.get() is not None
 
 
-def drivetrain_code(name: str | None) -> int:
-    return DRIVETRAIN_CODES.get(name or "", Drivetrain.RWD)
-
-
 def unit_system_for(settings: Mapping[str, Any]) -> str:
-    """Fallback unit system when no tune is known: follow the speed unit setting."""
+    """Unit system implied by the settings: follows the speed unit."""
     return "imperial" if settings.get("units", {}).get("speed") == "mph" else "metric"
 
 
 def to_dict(result: Any) -> Any:
-    return result.to_dict() if hasattr(result, "to_dict") else result
+    """JSON-ready form of a result object (``to_dict()``, dataclass, or as is)."""
+    if hasattr(result, "to_dict"):
+        return result.to_dict()
+    if dataclasses.is_dataclass(result) and not isinstance(result, type):
+        return dataclasses.asdict(result)
+    return result

@@ -138,7 +138,7 @@ def test_auto_stop_on_silence_but_not_for_manual_sessions(tmp_path: Path) -> Non
 
 def test_dangling_sessions_are_closed(tmp_path: Path) -> None:
     store = Store(tmp_path / "data")
-    session = store.create_session(started_at="2026-01-01T00:00:00.000Z", tune_id=None, note="")
+    session = store.create_session(started_at="2026-01-01T00:00:00.000Z", note="")
     store.close()
     store = Store(tmp_path / "data")
     assert store.close_dangling_sessions("2026-01-01T01:00:00.000Z") == 1

@@ -59,8 +59,9 @@ def test_lap_analysis_is_cached(app_factory: AppFactory) -> None:
     assert len(engine.calls["lap"]) == calls_before  # served from cache
 
     ctx = engine.calls["lap"][0]
-    assert ctx.drivetrain == 1 and ctx.lap_valid is True and ctx.tune_values == {}
-    assert ctx.unit_system == "metric"
+    assert ctx.drivetrain == "RWD" and ctx.lap_kind == "flying" and ctx.lap_valid is True
+    assert ctx.unit_system == "metric" and ctx.lap_time == pytest.approx(3.0)
+    assert ctx.tune_values == {}  # v1 tracks no tunes
 
     # A cold cache (e.g. after restart) recomputes from the raw packet file.
     services.frames.clear()
@@ -70,40 +71,21 @@ def test_lap_analysis_is_cached(app_factory: AppFactory) -> None:
     assert again["metrics"]["frames"] == 180
 
 
-def test_session_analysis_gets_previous_session_and_tune_changes(app_factory: AppFactory) -> None:
+def test_session_analysis(app_factory: AppFactory) -> None:
     engine = fake_engine()
     client = app_factory(engine=engine)
-    tune_a = client.post(
-        "/api/tunes",
-        json={"name": "A", "unit_system": "imperial", "values": {"arb.front": 20, "arb.rear": 18}},
-    ).json()
-    client.put("/api/tunes/active", json={"tune_id": tune_a["id"]})
-    first = record(client)
-    tune_b = client.post(
-        "/api/tunes",
-        json={
-            "name": "A",
-            "unit_system": "imperial",
-            "values": {"arb.front": 18, "arb.rear": 18},
-            "parent_id": tune_a["id"],
-        },
-    ).json()
-    assert client.get("/api/tunes/active").json()["id"] == tune_b["id"]
-    record(client, car_ordinal=777)  # different car: not "previous"
-    second = record(client)
+    record(client)
+    second = record(client, laps=3)
+    client.put("/api/settings", json={"units": {"speed": "mph"}})
 
-    result = client.get(f"/api/sessions/{second}/analysis").json()
-    assert result == {
-        "laps_analyzed": 3,
-        "has_previous": True,
-        "tune_changes": [{"setting": "arb.front", "from_value": 20.0, "to_value": 18.0}],
-    }
+    assert client.get(f"/api/sessions/{second}/analysis").json() == {"laps_analyzed": 4}
     ctx = engine.calls["session"][-1]
-    assert ctx.tune_values == {"arb.front": 18.0, "arb.rear": 18.0}
-    assert ctx.unit_system == "imperial"
+    assert ctx.drivetrain == "RWD" and ctx.unit_system == "imperial"
+    # v1 tracks no tunes: nothing about tunes or the previous session is passed.
+    assert ctx.tune_values == {} and ctx.previous_session is None and ctx.tune_changes == ()
+    lap_ctx = engine.calls["lap"][-1]
+    assert lap_ctx.unit_system == "imperial"  # unit change invalidated cached laps
 
-    first_result = client.get(f"/api/sessions/{first}/analysis").json()
-    assert first_result["has_previous"] is False and first_result["tune_changes"] == []
     calls = len(engine.calls["session"])
     client.get(f"/api/sessions/{second}/analysis")
     assert len(engine.calls["session"]) == calls  # cached
@@ -112,13 +94,10 @@ def test_session_analysis_gets_previous_session_and_tune_changes(app_factory: Ap
 # --- live tuning board: service ------------------------------------------------
 
 
-def make_service(
-    every: int = 30, tune: dict[str, float] | None = None, **kwargs: Any
-) -> tuple[LiveAnalysisService, Any]:
+def make_service(every: int = 30, **kwargs: Any) -> tuple[LiveAnalysisService, Any]:
     live = fake_live(every)
-    tune_values = {"values": tune or {}}
     service = LiveAnalysisService(
-        lambda: (tune_values["values"], "imperial"),
+        lambda: "imperial",
         module=LazyModule("fake", loader=lambda name: live),
         **kwargs,
     )
@@ -139,7 +118,7 @@ def frames(n: int, car: int = 1234, track: int = 860, drivetrain: int = 1) -> li
 
 
 def test_live_service_unavailable() -> None:
-    service = LiveAnalysisService(lambda: ({}, "metric"), module=LazyModule("x", loader=_missing))
+    service = LiveAnalysisService(lambda: "metric", module=LazyModule("x", loader=_missing))
     service.start()
     assert not service.available
     service.on_frame(frames(1)[0])
@@ -172,8 +151,8 @@ def test_live_service_rate_limit_and_changes() -> None:
         service.stop()
 
 
-def test_live_service_resets_on_car_track_and_tune_change() -> None:
-    service, live = make_service(tune={"arb.front": 20.0})
+def test_live_service_resets_on_car_or_track_change() -> None:
+    service, live = make_service()
     service.start()
     try:
         assert len(live.instances) == 1
@@ -181,7 +160,8 @@ def test_live_service_resets_on_car_track_and_tune_change() -> None:
             service.on_frame(f)
         assert len(live.instances) == 2  # first car seen
         assert live.instances[-1].drivetrain == 1
-        assert live.instances[-1].tune_values == {"arb.front": 20.0}
+        assert live.instances[-1].tune_values == {}
+        assert live.instances[-1].unit_system == "imperial"
         for f in frames(5):
             service.on_frame(f)
         assert len(live.instances) == 2  # same car and track
@@ -189,13 +169,11 @@ def test_live_service_resets_on_car_track_and_tune_change() -> None:
         assert len(live.instances) == 3
         service.on_frame(frames(1, car=42, track=999, drivetrain=2)[0])
         assert len(live.instances) == 4 and live.instances[-1].drivetrain == 2
-        service.on_tune_changed()
-        assert len(live.instances) == 5
         service.reset()
-        assert len(live.instances) == 6
+        assert len(live.instances) == 5
         # Race-off frames are ignored.
         service.on_frame(blank_frame(car_ordinal=1))
-        assert len(live.instances) == 6
+        assert len(live.instances) == 5
     finally:
         service.stop()
 
@@ -290,16 +268,13 @@ def test_live_api_and_ws(app_factory: AppFactory) -> None:
     assert client.get("/api/live-analysis").json()["corners_seen"] == 0
 
 
-def test_live_resets_when_active_tune_changes(app_factory: AppFactory) -> None:
+def test_live_reset_via_api_rebuilds_the_analyzer(app_factory: AppFactory) -> None:
     live = fake_live()
     client = app_factory(live=live)
-    tune = client.post(
-        "/api/tunes", json={"name": "T", "unit_system": "metric", "values": {"arb.rear": 9}}
-    ).json()
+    client.put("/api/settings", json={"units": {"speed": "mph"}})
+    inject(client, synth_laps(0, tail_s=0.5))
     count = len(live.instances)
-    client.put("/api/tunes/active", json={"tune_id": tune["id"]})
+    client.post("/api/live-analysis/reset")
     assert len(live.instances) == count + 1
-    assert live.instances[-1].tune_values == {"arb.rear": 9.0}
-    assert live.instances[-1].unit_system == "metric"
-    client.put("/api/tunes/active", json={"tune_id": tune["id"]})  # unchanged: no reset
-    assert len(live.instances) == count + 1
+    assert live.instances[-1].drivetrain == 1 and live.instances[-1].unit_system == "imperial"
+    assert live.instances[-1].tune_values == {}

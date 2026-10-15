@@ -7,7 +7,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from pitwall.services.engine import AnalysisFailed, AnalysisUnavailable
+from pitwall.services.baselines import UnknownCategory
+from pitwall.services.engine import AnalysisFailed, AnalysisUnavailable, BaselinesUnavailable
 from pitwall.services.recorder import RecordingError
 from pitwall.storage.db import NotFound
 
@@ -54,6 +55,14 @@ def install(app: FastAPI) -> None:
     @app.exception_handler(AnalysisUnavailable)
     async def _unavailable(request: Request, exc: AnalysisUnavailable) -> Response:
         return error_response(503, "analysis_unavailable", "The analysis engine is not available")
+
+    @app.exception_handler(BaselinesUnavailable)
+    async def _no_baselines(request: Request, exc: BaselinesUnavailable) -> Response:
+        return error_response(503, "baselines_unavailable", "Baseline setups are not available")
+
+    @app.exception_handler(UnknownCategory)
+    async def _unknown_category(request: Request, exc: UnknownCategory) -> Response:
+        return error_response(404, "not_found", f"{exc} not found")
 
     @app.exception_handler(AnalysisFailed)
     async def _failed(request: Request, exc: AnalysisFailed) -> Response:

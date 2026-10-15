@@ -10,7 +10,8 @@ from pitwall.config import Config
 from pitwall.storage.db import Store
 from pitwall.tune.settings import SETTINGS
 
-from .helpers import inject, race_off, synth_laps
+from .conftest import AppFactory
+from .helpers import fake_baselines, inject, race_off, synth_laps
 
 
 def error_code(response) -> str:
@@ -21,7 +22,7 @@ def error_code(response) -> str:
 
 def test_status_shape(client: TestClient) -> None:
     status = client.get("/api/status").json()
-    assert set(status) == {"receiver", "recording", "car", "track_ordinal", "active_tune_id"}
+    assert set(status) == {"receiver", "recording", "car", "track_ordinal"}
     receiver = status["receiver"]
     assert receiver["listening"] is False  # UDP not bound in tests
     assert receiver["packets_per_sec"] == 0 and receiver["last_packet_age_s"] is None
@@ -39,6 +40,8 @@ def test_status_reflects_packets(client: TestClient) -> None:
     status = client.get("/api/status").json()
     assert status["car"] == {
         "ordinal": 1234,
+        "name": None,  # baselines module not installed
+        "division": None,
         "class": 6,
         "class_name": "R",
         "pi": 812,
@@ -138,17 +141,12 @@ def test_trace(client: TestClient) -> None:
 
 def test_patch_and_delete_session(client: TestClient) -> None:
     session = record_session(client)
-    tune = client.post(
-        "/api/tunes", json={"name": "Base", "unit_system": "metric", "values": {"arb.front": 20}}
-    ).json()
-    patched = client.patch(
-        f"/api/sessions/{session['id']}", json={"note": "wet", "tune_id": tune["id"]}
-    ).json()
-    assert patched["note"] == "wet" and patched["tune_id"] == tune["id"]
-    cleared = client.patch(f"/api/sessions/{session['id']}", json={"tune_id": None}).json()
-    assert cleared["tune_id"] is None and cleared["note"] == "wet"
-    bad = client.patch(f"/api/sessions/{session['id']}", json={"tune_id": 999})
-    assert bad.status_code == 422 and error_code(bad) == "unknown_tune"
+    assert "tune_id" not in session
+    patched = client.patch(f"/api/sessions/{session['id']}", json={"note": "wet"}).json()
+    assert patched["note"] == "wet" and patched["lap_count"] == 3
+    assert client.patch(f"/api/sessions/{session['id']}", json={}).json()["note"] == "wet"
+    bad = client.patch(f"/api/sessions/{session['id']}", json={"tune_id": 1})
+    assert bad.status_code == 422 and error_code(bad) == "validation_error"
 
     client.post("/api/recording/start")
     active_id = client.get("/api/status").json()["recording"]["session_id"]
@@ -198,78 +196,6 @@ def test_tune_schema(client: TestClient) -> None:
     }
 
 
-def test_tunes_versioning(client: TestClient) -> None:
-    base = client.post(
-        "/api/tunes",
-        json={
-            "name": "Baseline",
-            "car_ordinal": 1234,
-            "unit_system": "imperial",
-            "values": {"arb.front": 20.0, "arb.rear": 18.0, "springs.front": 700.0},
-        },
-    ).json()
-    assert base["parent_id"] is None and base["changes"] == []
-    assert base["values"]["arb.front"] == 20.0 and base["created_at"]
-
-    child = client.post(
-        "/api/tunes",
-        json={
-            "name": "Baseline",
-            "unit_system": "imperial",
-            "values": {"arb.front": 18.0, "arb.rear": 18.0, "brake.balance": 52.0},
-            "parent_id": base["id"],
-            "note": "less push",
-        },
-    ).json()
-    assert child["parent_id"] == base["id"] and child["car_ordinal"] == 1234
-    assert child["changes"] == [
-        {"setting": "arb.front", "from": 20.0, "to": 18.0},  # tuning-menu order
-        {"setting": "springs.front", "from": 700.0, "to": None},
-        {"setting": "brake.balance", "from": None, "to": 52.0},
-    ]
-
-    listed = client.get("/api/tunes").json()
-    assert [t["id"] for t in listed] == [child["id"], base["id"]]
-    assert all("values" not in t for t in listed)
-    assert client.get("/api/tunes", params={"car_ordinal": 999}).json() == []
-    assert client.get(f"/api/tunes/{child['id']}").json() == child
-    assert error_code(client.get("/api/tunes/999")) == "not_found"
-
-
-def test_tune_validation(client: TestClient) -> None:
-    unknown = client.post(
-        "/api/tunes", json={"name": "x", "unit_system": "metric", "values": {"arb.middle": 1}}
-    )
-    assert unknown.status_code == 422 and error_code(unknown) == "unknown_setting"
-    parent = client.post("/api/tunes", json={"name": "x", "unit_system": "metric", "parent_id": 42})
-    assert parent.status_code == 422 and error_code(parent) == "unknown_parent"
-    units = client.post("/api/tunes", json={"name": "x", "unit_system": "furlongs"})
-    assert units.status_code == 422 and error_code(units) == "validation_error"
-
-
-def test_active_tune(client: TestClient) -> None:
-    assert client.get("/api/tunes/active").json() is None
-    base = client.post("/api/tunes", json={"name": "A", "unit_system": "metric"}).json()
-    other = client.post("/api/tunes", json={"name": "B", "unit_system": "metric"}).json()
-    assert client.put("/api/tunes/active", json={"tune_id": base["id"]}).json()["id"] == base["id"]
-    assert client.get("/api/status").json()["active_tune_id"] == base["id"]
-
-    # A new version of the active tune becomes active; a version of another doesn't.
-    child = client.post(
-        "/api/tunes", json={"name": "A", "unit_system": "metric", "parent_id": base["id"]}
-    ).json()
-    assert client.get("/api/tunes/active").json()["id"] == child["id"]
-    client.post("/api/tunes", json={"name": "B", "unit_system": "metric", "parent_id": other["id"]})
-    assert client.get("/api/tunes/active").json()["id"] == child["id"]
-
-    session = record_session(client)
-    assert session["tune_id"] == child["id"]
-
-    assert client.put("/api/tunes/active", json={"tune_id": None}).json() is None
-    assert client.get("/api/status").json()["active_tune_id"] is None
-    assert client.put("/api/tunes/active", json={"tune_id": 999}).status_code == 404
-
-
 def test_unknown_api_path_is_json_404(client: TestClient) -> None:
     response = client.get("/api/nope")
     assert response.status_code == 404 and error_code(response) == "not_found"
@@ -286,3 +212,63 @@ def test_shutdown_finishes_an_active_recording(tmp_path: Path) -> None:
     assert session["stopped_at"] is not None
     assert [lap["kind"] for lap in store.list_laps(session["id"])] == ["flying", "partial"]
     store.close()
+
+
+def test_tunes_are_gone(client: TestClient) -> None:
+    for path in ("/api/tunes", "/api/tunes/active", "/api/tunes/1"):
+        assert client.get(path).status_code == 404
+
+
+# --- baseline setups ------------------------------------------------------------
+
+
+def test_baselines_unavailable(client: TestClient) -> None:
+    for path in ("/api/baseline/categories", "/api/baseline", "/api/baseline/lmp2"):
+        response = client.get(path)
+        assert response.status_code == 503 and error_code(response) == "baselines_unavailable"
+
+
+def test_baseline_categories_and_manual_pick(app_factory: AppFactory) -> None:
+    client = app_factory(baselines=fake_baselines())
+    categories = client.get("/api/baseline/categories").json()
+    assert [c["id"] for c in categories] == ["lmp2", "gt-awd"]
+    assert categories[0] == {
+        "id": "lmp2",
+        "name": "LMP2",
+        "description": "Prototypes",
+        "divisions": ["Forza P2"],
+        "drivetrains": ["RWD"],
+    }
+    picked = client.get("/api/baseline/gt-awd").json()
+    assert picked["category"]["id"] == "gt-awd" and picked["unit_system"] == "metric"
+    imperial = client.get("/api/baseline/gt-awd", params={"unit_system": "imperial"}).json()
+    assert imperial["unit_system"] == "imperial"
+    missing = client.get("/api/baseline/nope")
+    assert missing.status_code == 404 and error_code(missing) == "not_found"
+    bad_units = client.get("/api/baseline/lmp2", params={"unit_system": "furlongs"})
+    assert bad_units.status_code == 422
+
+
+def test_baseline_for_car_on_track(app_factory: AppFactory) -> None:
+    baselines = fake_baselines()
+    client = app_factory(baselines=baselines)
+    assert client.get("/api/baseline").json() == {"match": None, "baseline": None}
+
+    inject(client, synth_laps(0, tail_s=0.5))  # car 1234, known by ordinal
+    result = client.get("/api/baseline").json()
+    assert result["match"] == {
+        "category_id": "lmp2",
+        "how": "ordinal",
+        "confidence": "high",
+        "car": {"ordinal": 1234, "name": "Test Prototype", "division": "Forza P2"},
+    }
+    assert result["baseline"]["category"]["id"] == "lmp2"
+    assert baselines.calls[-1] == (1234, 812, 6, 1)  # ordinal, PI, class index, drivetrain
+
+    status = client.get("/api/status").json()
+    assert status["car"]["name"] == "Test Prototype"
+    assert status["car"]["division"] == "Forza P2"
+
+    inject(client, synth_laps(0, tail_s=0.5, car_ordinal=555))  # unknown car, RWD
+    assert client.get("/api/baseline").json() == {"match": None, "baseline": None}
+    assert client.get("/api/status").json()["car"]["name"] is None

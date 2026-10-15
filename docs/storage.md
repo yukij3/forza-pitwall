@@ -63,7 +63,6 @@ One row per recording (Start → Stop).
 | `started_at`, `stopped_at` | wall clock; `stopped_at` is null while recording |
 | `car_ordinal`, `car_pi`, `car_class`, `drivetrain` | from the first recorded packet; `drivetrain` is `FWD`/`RWD`/`AWD` |
 | `track_ordinal` | null for Forza Motorsport 7 packets |
-| `tune_id` | active tune when the recording started (editable) |
 | `note` | free text |
 | `raw_file` | path of the raw packet file, relative to the data directory |
 | `frame_count` | packets recorded |
@@ -84,28 +83,15 @@ Sessions left open by a crash are closed (with the restart time as
 | `frame_count`, `first_frame` | the lap's records in the raw file |
 | `started_at` | wall clock of the lap's first packet |
 
-### `tunes`
-
-Immutable tune versions. A new version is a new row with `parent_id` pointing
-at the version it was derived from.
-
-| Column | Meaning |
-|---|---|
-| `id`, `name`, `car_ordinal`, `note`, `created_at` | |
-| `unit_system` | `imperial` or `metric`: the units the values were entered in |
-| `values_json` | `{"arb.front": 18.0, ...}`, keys from `pitwall/tune/settings.py` |
-| `parent_id` | previous version or null |
-| `changes_json` | `[{"setting", "from", "to"}]`: diff against the parent, computed on save |
-
 ### `kv`
 
-Small JSON values: `settings` (units, auto-record) and `active_tune_id`.
+Small JSON values: `settings` (units, auto-record).
 
 ### `analysis_cache`
 
 Results of lap and session analysis as JSON, keyed by `(kind, ref_id)` with a
-fingerprint of everything the result depends on (engine version, tune, laps,
-previous session). A result whose fingerprint no longer matches is recomputed
+fingerprint of everything the result depends on (engine version, unit
+system, laps). A result whose fingerprint no longer matches is recomputed
 on the next request, so the cache can be deleted at any time.
 
 ## How laps are cut

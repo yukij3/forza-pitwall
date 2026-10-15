@@ -10,8 +10,8 @@ from fastapi import FastAPI, WebSocket
 from pitwall import __version__
 from pitwall.api import errors, static
 from pitwall.api.routes_sessions import router as sessions_router
+from pitwall.api.routes_setup import router as setup_router
 from pitwall.api.routes_status import router as status_router
-from pitwall.api.routes_tunes import router as tunes_router
 from pitwall.config import Config
 from pitwall.services.container import Services
 
@@ -41,7 +41,7 @@ def create_app(config: Config | None = None, *, udp: bool = True) -> FastAPI:
     errors.install(app)
     app.include_router(status_router)
     app.include_router(sessions_router)
-    app.include_router(tunes_router)
+    app.include_router(setup_router)
 
     @app.websocket("/ws/live")
     async def ws_live(websocket: WebSocket) -> None:

@@ -39,7 +39,6 @@ def status_signature(status: dict[str, Any]) -> tuple[Any, ...]:
         tuple(sorted(status["recording"].items())),
         tuple(sorted((status.get("car") or {}).items())),
         status.get("track_ordinal"),
-        status.get("active_tune_id"),
     )
 
 
