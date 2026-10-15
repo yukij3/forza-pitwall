@@ -141,7 +141,7 @@
 
 .segments { display: inline-flex; gap: 2px; vertical-align: middle; }
 .segments i { display: block; width: 0.55rem; height: 0.9rem; background: var(--tarmac-3); }
-.segments i.on { background: var(--ink-2); }
+.segments i.on { background: var(--orange); }
 
 /* ------------------------------------------------------------------ panels */
 
@@ -160,7 +160,7 @@
 }
 .page-head h1 { font-size: var(--t-2xl); font-weight: 600; }
 .page-head .sub { color: var(--ink-2); font-size: var(--t-md); margin-top: var(--s-1); }
-.crumbs { display: flex; gap: var(--s-2); color: var(--ink-3); font-size: var(--t-md); margin-bottom: var(--s-2); }
+.crumbs { display: flex; gap: var(--s-2); color: var(--ink-3); font-size: var(--t-sm); margin-bottom: 0.1rem; }
 .crumbs a { color: var(--ink-2); }
 
 .section-title { font-size: var(--t-xl); font-weight: 600; margin-bottom: var(--s-4); }

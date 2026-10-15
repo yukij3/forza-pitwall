@@ -9,7 +9,6 @@
 .metric--wide { grid-column: span 2; }
 .scroll-panel { position: relative; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .table--sticky thead th { position: sticky; top: 0; z-index: 1; background: var(--tarmac-0); }
-.help { color: var(--ink-3); font-size: var(--t-sm); margin-top: var(--s-2); max-width: 75ch; }
 .field-state { color: var(--ink-3); font-size: var(--t-sm); font-weight: 500; }
 .block-title { font-size: var(--t-md); font-weight: 600; margin-bottom: var(--s-2); }
 .block-title .muted { font-size: var(--t-base); font-weight: 500; }
@@ -36,7 +35,6 @@ button.chip:hover { border-color: var(--ink-3); color: var(--ink); background: v
 
 /* ---------------------------------------------------------------- session */
 
-.crumbs { margin-bottom: 0.1rem; font-size: var(--t-sm); }
 .session-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-3); }
 .session-head__date { color: var(--ink-2); font-size: var(--t-md); }
 .session-plate {
@@ -92,7 +90,6 @@ button.chip:hover { border-color: var(--ink-3); color: var(--ink); background: v
 .finding__title { flex-basis: 100%; font-size: var(--t-md); font-weight: 600; }
 .finding__evidence { font-size: var(--t-base); color: var(--ink-2); }
 .finding__where { display: flex; flex-wrap: wrap; gap: var(--s-1); }
-.segments i.on { background: var(--orange); }
 
 .limits ul { display: grid; gap: var(--s-1); list-style: disc; padding-left: 1.2em; margin-top: var(--s-2); color: var(--ink-2); font-size: var(--t-sm); }
 
