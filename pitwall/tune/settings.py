@@ -50,8 +50,12 @@ SETTINGS: tuple[Setting, ...] = (
     Setting("damping.bump_front", "Damping", "Bump Stiffness", "Front", "", ""),
     Setting("damping.bump_rear", "Damping", "Bump Stiffness", "Rear", "", ""),
     # Suspension geometry (Forza Motorsport 2023)
-    Setting("geometry.roll_center_front", "Geometry", "Roll Center Height Offset", "Front", "in", "cm"),
-    Setting("geometry.roll_center_rear", "Geometry", "Roll Center Height Offset", "Rear", "in", "cm"),
+    Setting(
+        "geometry.roll_center_front", "Geometry", "Roll Center Height Offset", "Front", "in", "cm"
+    ),
+    Setting(
+        "geometry.roll_center_rear", "Geometry", "Roll Center Height Offset", "Rear", "in", "cm"
+    ),
     Setting("geometry.anti_front", "Geometry", "Anti-dive", "Front", "%", "%"),
     Setting("geometry.anti_rear", "Geometry", "Anti-squat", "Rear", "%", "%"),
     # Aero
@@ -65,7 +69,9 @@ SETTINGS: tuple[Setting, ...] = (
     Setting("diff.decel_front", "Differential", "Deceleration", "Front", "%", "%", ("FWD", "AWD")),
     Setting("diff.accel_rear", "Differential", "Acceleration", "Rear", "%", "%", ("RWD", "AWD")),
     Setting("diff.decel_rear", "Differential", "Deceleration", "Rear", "%", "%", ("RWD", "AWD")),
-    Setting("diff.center_balance", "Differential", "Center Balance", None, "% rear", "% rear", ("AWD",)),
+    Setting(
+        "diff.center_balance", "Differential", "Center Balance", None, "% rear", "% rear", ("AWD",)
+    ),
 )
 
 BY_KEY: dict[str, Setting] = {s.key: s for s in SETTINGS}
