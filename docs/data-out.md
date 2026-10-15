@@ -118,7 +118,7 @@ front-left, front-right, rear-left, rear-right (4 values each).
 
 - Tire pressure, and tire temperature across the tread (one value per tire, so
   camber can't be judged from it).
-- The current tune. Pitwall's tune sheet is entered by the player.
+- The current tune (setup values).
 - Car and track names: only numeric ordinals.
 - Lap validity (track limits). Pitwall only knows about rewinds, pauses and
   data gaps.

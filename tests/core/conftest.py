@@ -24,12 +24,14 @@ def app_factory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[App
         *,
         engine: types.ModuleType | None = None,
         live: types.ModuleType | None = None,
+        baselines: types.ModuleType | None = None,
         web_dir: Path | None = None,
         live_hz: float = 50.0,
     ) -> TestClient:
         # None makes the import fail, i.e. "analysis engine not installed".
         monkeypatch.setitem(sys.modules, "pitwall.analysis", engine)
         monkeypatch.setitem(sys.modules, "pitwall.analysis.live", live)
+        monkeypatch.setitem(sys.modules, "pitwall.baselines", baselines)
         config = Config(
             udp_port=0,
             http_port=0,

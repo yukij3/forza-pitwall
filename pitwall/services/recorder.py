@@ -75,7 +75,6 @@ class Recorder:
             raise RecordingError("already_recording", "A recording is already running")
         session = self.store.create_session(
             started_at=iso(self.wall_clock()),
-            tune_id=self.store.get_active_tune_id(),
             note=note,
         )
         raw_path = self.store.raw_path(session)

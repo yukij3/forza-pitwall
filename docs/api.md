@@ -11,8 +11,8 @@ There is no authentication: Pitwall is meant for a home LAN.
 - **Units.** Everything the API returns uses: speed m/s, temperature °C,
   distance m, time s, angles rad, pedals 0..1, steering −1..1 (negative =
   left), accelerations in g. Slip values are the game's normalized numbers
-  (0 = full grip, above 1 = grip lost). Tune values are stored as entered, in
-  the tune's `unit_system`. The UI converts for display using `/api/settings`.
+  (0 = full grip, above 1 = grip lost). The UI converts for display using
+  `/api/settings`.
 - **Lap numbers** are 1-based, as on the game HUD.
 - **Gear**: `-1` reverse, `0` neutral, `1`..`10` forward.
 - **Timestamps**: UTC ISO-8601 with milliseconds, e.g. `2026-01-31T18:04:05.123Z`.
@@ -26,13 +26,11 @@ There is no authentication: Pitwall is meant for a home LAN.
 |---|---|---|
 | `not_found` | 404 | unknown id, or no endpoint for this `/api` path and method |
 | `validation_error` | 422 | malformed body or query parameter |
-| `unknown_setting` | 422 | tune values use a key that isn't in the tune schema |
-| `unknown_parent` | 422 | `parent_id` of a new tune doesn't exist |
-| `unknown_tune` | 422 | session patched with a tune that doesn't exist |
 | `already_recording` | 409 | start while a recording runs |
 | `not_recording` | 409 | stop while nothing records |
 | `session_recording` | 409 | delete the session that is being recorded |
 | `analysis_unavailable` | 503 | the analysis engine isn't installed |
+| `baselines_unavailable` | 503 | the baseline setups module isn't installed |
 | `analysis_failed` | 500 | the analysis engine raised an error |
 
 ## Status
@@ -52,9 +50,10 @@ There is no authentication: Pitwall is meant for a home LAN.
     "last_ignored_size": null
   },
   "recording": {"active": true, "session_id": 12, "started_at": "2026-01-31T18:04:05.123Z", "laps": 3},
-  "car": {"ordinal": 1234, "class": 7, "class_name": "P", "pi": 949, "drivetrain": "RWD"},
-  "track_ordinal": 860,
-  "active_tune_id": 4
+  "car": {"ordinal": 1234, "name": "2014 Mazda #70 SpeedSource Lola B12/80",
+          "division": "Forza P2", "class": 7, "class_name": "P", "pi": 949,
+          "drivetrain": "RWD"},
+  "track_ordinal": 860
 }
 ```
 
@@ -65,7 +64,9 @@ There is no authentication: Pitwall is meant for a home LAN.
 - `ignored_packets` counts datagrams of an unsupported size;
   `last_ignored_size` is the size of the last one (232 = game set to "Sled").
 - `car` and `track_ordinal` come from the last race-on packet, so they survive
-  trips to the menu; both are null before the first one. `class` is the raw
+  trips to the menu; both are null before the first one. `name` and
+  `division` come from the baseline setups' car list and are null for cars it
+  doesn't know (or when that module isn't installed). `class` is the raw
   class index from the packet; `class_name` is derived from the performance
   index (see [data-out.md](data-out.md)). `track_ordinal` is null for
   Forza Motorsport 7 packets.
@@ -77,9 +78,8 @@ There is no authentication: Pitwall is meant for a home LAN.
 ### `POST /api/recording/start`
 
 Body (optional): `{"note": "Wet practice"}`. Returns the new **Session**. 409
-`already_recording` if one is running. The session's `tune_id` is the active
-tune at this moment; car and track fields fill in when the first race-on packet
-arrives.
+`already_recording` if one is running. Car and track fields fill in when the
+first race-on packet arrives.
 
 ### `POST /api/recording/stop`
 
@@ -99,7 +99,6 @@ Shutting Pitwall down stops an active recording the same way.
   "car_ordinal": 1234, "car_pi": 949, "car_class": 7, "car_class_name": "P",
   "drivetrain": "RWD",
   "track_ordinal": 860,
-  "tune_id": 4,
   "note": "",
   "lap_count": 6,
   "best_lap": 97.912,
@@ -121,8 +120,7 @@ The session plus `"laps": [Lap]` in recording order.
 
 ### `PATCH /api/sessions/{id}`
 
-Body: `{"note"?: string, "tune_id"?: int | null}`. Only the fields present are
-changed; `"tune_id": null` detaches the tune. Returns the session.
+Body: `{"note": string}`. Returns the session.
 
 ### `DELETE /api/sessions/{id}`
 
@@ -132,14 +130,13 @@ changed; `"tune_id": null` detaches the tune. Returns the session.
 ### `GET /api/sessions/{id}/analysis`
 
 The analysis engine's **SessionAnalysis** for the session (shape owned by the
-engine, see `docs/analysis.md`). It is computed on request and cached until the
-session's laps, tune or previous session change. 503 `analysis_unavailable`
-without the engine.
+engine, see `docs/analysis.md`). It is computed on request from the session's
+laps and cached until the laps or the unit setting change. 503
+`analysis_unavailable` without the engine.
 
-The engine gets the session's laps, its tune values, the previous session's
-analysis ("previous" = the most recent earlier session with the same car and
-track), and the settings that differ between the previous session's tune and
-this one's.
+v1 doesn't track tunes, so the engine gets no tune values, tune changes or
+previous session: `suggested_value` and `verdict_on_last_change` are always
+null.
 
 ## Laps
 
@@ -194,30 +191,11 @@ The engine's **LapAnalysis** for the lap. Laps are analysed in the background as
 soon as they finish (see `analysis_ready` below); results are cached. 503
 `analysis_unavailable` without the engine.
 
-## Tunes
-
-Tunes are immutable versions. To change a tune, save a new version with
-`parent_id` set; the server computes what changed.
-
-**Tune**
-
-```json
-{
-  "id": 4, "name": "Baseline", "car_ordinal": 1234, "unit_system": "imperial",
-  "values": {"arb.front": 18.0, "arb.rear": 20.0},
-  "parent_id": 3,
-  "changes": [{"setting": "arb.front", "from": 20.0, "to": 18.0}],
-  "note": "", "created_at": "2026-01-31T18:30:00.000Z"
-}
-```
-
-`values` may be partial. `changes` lists every setting whose value differs from
-the parent, in tuning-menu order; `from`/`to` is null when the setting is
-missing on that side. It is `[]` for a tune without a parent.
+## Setup reference
 
 ### `GET /api/tune-schema`
 
-Every setting in tuning-menu order:
+Every tuning setting in the game's menu order, for labels:
 
 ```json
 [{"key": "arb.front", "section": "Anti-roll Bars", "label": "Anti-roll Bars",
@@ -225,37 +203,55 @@ Every setting in tuning-menu order:
   "drivetrains": ["FWD", "RWD", "AWD"]}]
 ```
 
-### `GET /api/tunes?car_ordinal=1234`
+## Baseline setups
 
-All tunes, newest first, **without** `values`. `car_ordinal` filters (optional).
+Approximate starting setups per car type, with sources and a confidence level.
+The data and the shapes below (**Category**, **Match**, **Baseline**) come from
+the baseline setups module; without it, these endpoints answer 503
+`baselines_unavailable`.
 
-### `POST /api/tunes`
+Each endpoint takes an optional `unit_system` query parameter (`imperial` |
+`metric`). Without it, the unit system follows the speed setting (`mph` →
+imperial, `kmh` → metric).
 
-Body:
+### `GET /api/baseline/categories`
+
+All categories:
 
 ```json
-{"name": "Baseline", "car_ordinal": 1234, "unit_system": "imperial",
- "values": {"arb.front": 18.0}, "parent_id": 3, "note": ""}
+[{"id": "lmp2", "name": "LMP2 / Forza P2 prototypes", "description": "...",
+  "divisions": ["Forza P2"], "drivetrains": ["RWD"]}]
 ```
 
-`name` and `unit_system` (`imperial` | `metric`) are required. Unknown setting
-keys give 422 `unknown_setting`; a missing parent gives 422 `unknown_parent`.
-Without `car_ordinal`, a new version inherits the parent's. If the parent is
-the active tune, the new version becomes the active tune. Returns the Tune.
+### `GET /api/baseline`
 
-### `GET /api/tunes/{id}`
+The best match for the car currently on track (the car in `/api/status`) and its
+baseline:
 
-The Tune with values.
+```json
+{"match": {"category_id": "lmp2", "how": "ordinal", "confidence": "high",
+           "car": {"ordinal": 1234, "name": "2014 Mazda #70 SpeedSource Lola B12/80",
+                   "division": "Forza P2"}},
+ "baseline": Baseline}
+```
 
-### `GET /api/tunes/active`
+`how` is `ordinal` (the car is known), `division` or `class_drivetrain`
+(guessed from class and drivetrain). Both fields are null when no car has been
+seen yet or nothing matches.
 
-The active Tune, or `null`.
+### `GET /api/baseline/{category_id}`
 
-### `PUT /api/tunes/active`
+The **Baseline** for a category picked by hand; 404 `not_found` for an unknown
+id.
 
-Body: `{"tune_id": 4}` or `{"tune_id": null}`. Returns the Tune or `null`; 404
-if the tune doesn't exist. New recordings take this tune, and the live tuning
-board resets when it changes.
+```json
+{"category": Category, "unit_system": "imperial",
+ "settings": [{"key": "arb.front", "section": "Anti-roll Bars", "label": "Anti-roll Bars",
+               "axle": "Front", "value": 18.0, "range": [15.0, 22.0],
+               "unit": "", "relative": null, "note": "..."}],
+ "notes": ["..."], "sources": [{"title": "...", "url": "..."}],
+ "confidence": "low"}
+```
 
 ## Settings
 
@@ -290,8 +286,9 @@ owned by the analysis engine, see `docs/analysis.md`:
             "target_text": "−0.05 … +0.10", "samples": 9, "recommendation": null}]}
 ```
 
-The board starts over automatically when the car or track changes and when the
-active tune changes, using the current drivetrain and tune values.
+The board starts over automatically when the car or track changes, using the
+car's drivetrain. Recommendation units follow the speed setting (`mph` →
+imperial, `kmh` → metric).
 
 ### `GET /api/live-analysis`
 
@@ -299,8 +296,8 @@ The current LiveAnalysis. 503 `analysis_unavailable` without the engine.
 
 ### `POST /api/live-analysis/reset`
 
-Starts the board over (e.g. after changing the tune in game without saving a
-new version). Returns the fresh LiveAnalysis. 503 `analysis_unavailable`
+Starts the board over; press it after changing the setup in game. Returns the
+fresh LiveAnalysis. 503 `analysis_unavailable`
 without the engine.
 
 ## WebSocket `/ws/live`
@@ -314,7 +311,7 @@ Server → client JSON messages; the client doesn't need to send anything.
 ```
 
 Sent on connect, whenever something important changes (recording, race on/off,
-packets starting or stopping, car, track, active tune), and at least once per
+packets starting or stopping, car, track), and at least once per
 second.
 
 ### `telemetry`

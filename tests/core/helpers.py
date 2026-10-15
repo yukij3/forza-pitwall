@@ -103,29 +103,25 @@ class FakeResult:
 
 
 def fake_engine() -> types.ModuleType:
+    """Mirrors the engine's contexts: tune fields exist but core must leave them empty."""
     mod = types.ModuleType("pitwall.analysis")
 
-    @dataclass
+    @dataclass(frozen=True)
     class LapContext:
-        drivetrain: int
-        lap_kind: str
-        lap_valid: bool
-        tune_values: dict[str, float]
-        unit_system: str
+        drivetrain: str | int | None = None
+        lap_kind: str = "flying"
+        lap_valid: bool = True
+        tune_values: dict[str, float] = field(default_factory=dict)
+        unit_system: str = "imperial"
+        lap_time: float | None = None
 
-    @dataclass
-    class TuneChange:
-        setting: str
-        from_value: float | None
-        to_value: float | None
-
-    @dataclass
+    @dataclass(frozen=True)
     class SessionContext:
-        drivetrain: int
-        tune_values: dict[str, float]
-        unit_system: str
+        drivetrain: str | int | None = None
+        tune_values: dict[str, float] = field(default_factory=dict)
+        unit_system: str = "imperial"
         previous_session: Any = None
-        tune_changes: Sequence[TuneChange] = field(default_factory=list)
+        tune_changes: Sequence[Any] = ()
 
     calls: dict[str, list[Any]] = {"lap": [], "session": []}
 
@@ -135,17 +131,11 @@ def fake_engine() -> types.ModuleType:
 
     def analyze_session(laps: Sequence[Any], ctx: SessionContext) -> FakeResult:
         calls["session"].append(ctx)
-        return FakeResult(
-            {
-                "laps_analyzed": len(laps),
-                "has_previous": ctx.previous_session is not None,
-                "tune_changes": [vars(c) for c in ctx.tune_changes],
-            }
-        )
+        return FakeResult({"laps_analyzed": len(laps)})
 
+    mod.__version__ = "test"  # type: ignore[attr-defined]
     mod.LapContext = LapContext  # type: ignore[attr-defined]
     mod.SessionContext = SessionContext  # type: ignore[attr-defined]
-    mod.TuneChange = TuneChange  # type: ignore[attr-defined]
     mod.analyze_lap = analyze_lap  # type: ignore[attr-defined]
     mod.analyze_session = analyze_session  # type: ignore[attr-defined]
     mod.calls = calls  # type: ignore[attr-defined]
@@ -160,7 +150,7 @@ def fake_live(every: int = 30) -> types.ModuleType:
     class LiveAnalyzer:
         def __init__(
             self,
-            drivetrain: int,
+            drivetrain: int | str,
             tune_values: dict[str, float] | None = None,
             unit_system: str = "imperial",
             window_corners: int = 12,
@@ -190,6 +180,73 @@ def fake_live(every: int = 30) -> types.ModuleType:
 
     mod.LiveAnalyzer = LiveAnalyzer  # type: ignore[attr-defined]
     mod.instances = instances  # type: ignore[attr-defined]
+    return mod
+
+
+def fake_baselines() -> types.ModuleType:
+    """Baseline setups for two categories; knows one car by ordinal."""
+    mod = types.ModuleType("pitwall.baselines")
+
+    @dataclass
+    class Category:  # plain dataclass: core falls back to asdict()
+        id: str
+        name: str
+        description: str
+        divisions: list[str]
+        drivetrains: list[str]
+
+    @dataclass
+    class CarInfo:
+        ordinal: int
+        name: str
+        division: str
+
+    @dataclass
+    class Match:
+        category_id: str
+        how: str
+        confidence: str
+        car: CarInfo | None
+
+    cats = [
+        Category("lmp2", "LMP2", "Prototypes", ["Forza P2"], ["RWD"]),
+        Category("gt-awd", "GT AWD", "All-wheel-drive GT", ["GT"], ["AWD"]),
+    ]
+    cars = {1234: CarInfo(1234, "Test Prototype", "Forza P2")}
+    calls: list[tuple[Any, ...]] = []
+
+    def categories() -> list[Category]:
+        return cats
+
+    def match(car_ordinal, car_pi, car_class, drivetrain) -> Match | None:
+        calls.append((car_ordinal, car_pi, car_class, drivetrain))
+        if car_ordinal in cars:
+            return Match("lmp2", "ordinal", "high", cars[car_ordinal])
+        if drivetrain == 2:
+            return Match("gt-awd", "class_drivetrain", "low", None)
+        return None
+
+    def baseline(category_id: str, unit_system: str = "imperial") -> FakeResult:
+        category = next((c for c in cats if c.id == category_id), None)
+        if category is None:
+            raise KeyError(category_id)
+        return FakeResult(
+            {
+                "category": vars(category),
+                "unit_system": unit_system,
+                "settings": [{"key": "arb.front", "value": 18.0}],
+                "notes": [],
+                "sources": [],
+                "confidence": "low",
+            }
+        )
+
+    def car_info(car_ordinal: int) -> CarInfo | None:
+        return cars.get(car_ordinal)
+
+    for fn in (categories, match, baseline, car_info):
+        setattr(mod, fn.__name__, fn)
+    mod.calls = calls  # type: ignore[attr-defined]
     return mod
 
 

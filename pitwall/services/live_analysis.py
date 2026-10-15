@@ -3,9 +3,9 @@
 * Frames are handed to a worker thread through a bounded queue, so a slow
   ``push()`` never blocks the UDP/event loop; when the queue is full, new frames
   are dropped and counted.
-* The analyzer is rebuilt (with the current drivetrain and tune values) when
-  the car or track changes, when the active tune changes, and on manual reset.
-  Frames queued before a reset are discarded.
+* The analyzer is rebuilt (with the current drivetrain) when the car or track
+  changes and on manual reset (the player presses it after changing the setup
+  in game). Frames queued before a reset are discarded.
 * Snapshots are published at most every ``min_interval_s`` and only when they
   changed; the broadcaster calls :meth:`poll` from its own loop.
 """
@@ -16,7 +16,7 @@ import logging
 import queue
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from typing import Any
 
 from pitwall.services.engine import LIVE_MODULE, AnalysisUnavailable, LazyModule, to_dict
@@ -24,7 +24,7 @@ from pitwall.telemetry.model import Drivetrain, Frame
 
 log = logging.getLogger(__name__)
 
-TuneProvider = Callable[[], tuple[Mapping[str, float], str]]
+UnitSystemProvider = Callable[[], str]
 
 QUEUE_SIZE = 240  # 4 s of frames at 60 Hz
 MIN_INTERVAL_S = 0.5  # at most 2 updates per second
@@ -34,14 +34,14 @@ _STOP = object()
 class LiveAnalysisService:
     def __init__(
         self,
-        tune_provider: TuneProvider,
+        unit_system: UnitSystemProvider,
         *,
         module: LazyModule | None = None,
         queue_size: int = QUEUE_SIZE,
         min_interval_s: float = MIN_INTERVAL_S,
     ) -> None:
         self.module = module or LazyModule(LIVE_MODULE)
-        self.tune_provider = tune_provider
+        self.unit_system = unit_system
         self.min_interval_s = min_interval_s
         self.dropped_frames = 0
         self.resets = 0
@@ -98,19 +98,13 @@ class LiveAnalysisService:
         except queue.Full:
             self.dropped_frames += 1
 
-    def on_tune_changed(self) -> None:
-        if self._thread is not None:
-            self.reset()
-
     def reset(self) -> dict[str, Any]:
-        """Rebuild the analyzer with the current drivetrain and tune; returns its snapshot."""
+        """Rebuild the analyzer with the current drivetrain; returns its snapshot."""
         module = self.module.require()
-        tune_values, unit_system = self.tune_provider()
+        unit_system = self.unit_system()
         with self._lock:
             self._generation += 1
-            self._analyzer = module.LiveAnalyzer(
-                self._drivetrain, dict(tune_values), unit_system=unit_system
-            )
+            self._analyzer = module.LiveAnalyzer(self._drivetrain, unit_system=unit_system)
             snapshot = to_dict(self._analyzer.snapshot())
             self._latest = snapshot
             self._dirty = True
