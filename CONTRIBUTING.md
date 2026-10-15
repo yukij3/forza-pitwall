@@ -14,8 +14,8 @@ uv run python -m pitwall serve   # UDP 5300, web UI on http://localhost:5301
 uv run python -m pitwall simulate  # synthetic telemetry, no game needed
 ```
 
-The UI can also run against a built-in mock of the API: open
-`http://localhost:5301/?mock=1`.
+The UI also has a demo mode that fakes the API and the live feed in the
+browser: open `http://localhost:5301/?mock=1`.
 
 ## Tests and lint
 
@@ -47,13 +47,22 @@ tests for the module you touched.
   deliberately, in their own pull request, and update all users.
 - `pitwall/analysis/` is pure Python: it takes frames and context in and returns
   dataclasses out. No I/O, no global state, no imports from `api` or `storage`.
+  Bump `pitwall.analysis.__version__` when results change, so cached analyses
+  are recomputed.
+- `pitwall/baselines/` is pure Python over bundled JSON in
+  `pitwall/baselines/data/`. `cars.json` is derived from an MIT-licensed list;
+  keep `cars.LICENSE.txt` next to it (see
+  [docs/baselines.md](docs/baselines.md)).
+- `pitwall/services/` connects storage, analysis and the API: the recorder, the
+  live board and analysis runners, and the `Services` container the API
+  routes use.
 - Frames keep the game's raw units. Conversion to the API's units (m/s, °C, m,
   s, rad) happens at the API boundary, not in the model or the analysis.
 - `pitwall/storage/` owns the database and raw packet files. Other modules go
   through it rather than touching files directly.
 - `web/` is plain HTML, CSS and JavaScript (ES modules) with no build step and
   no CDN at runtime, because the LAN it runs on may be offline. Vendor any
-  third-party file with its license. Keep the `?mock=1` mode working.
+  third-party file with its license. Keep demo mode (`?mock=1`) working.
 
 See [docs/architecture.md](docs/architecture.md) for how the modules fit
 together.

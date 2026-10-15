@@ -111,7 +111,6 @@ export function mount(main, ctx) {
   let rows = new Map();
   let idsKey = "";
   let lastFocus = null;
-  const vacant = h("li", { class: "item item--vacant", "aria-hidden": "true" });
 
   function buildRow(item) {
     const plate = h("span", { class: "plate" });
@@ -216,25 +215,20 @@ export function mount(main, ctx) {
     const half = Math.max(1, Math.ceil(la.items.length / 2));
     const focusId = la.focus && rows.has(la.focus) ? la.focus : null;
     for (const item of la.items) patchRow(rows.get(item.id), item, item.id === focusId);
-    // Every item owns a fixed cell (server order, down the left column, then
-    // the right). The focus item is lifted into the full-width lead row; its
-    // own cell stays empty so no other row moves. DOM order puts the lead
-    // first for screen readers and narrow layouts.
+    // The focus item is lifted into the full-width lead row; the others fill
+    // the two columns in server order (down the left, then the right), so no
+    // cell is left empty. DOM order puts the lead first for screen readers.
     if (focusId !== lastFocus) {
       const lead = focusId ? 1 : 0;
-      la.items.forEach((item, i) => {
+      const others = la.items.filter((item) => item.id !== focusId);
+      const split = Math.max(1, Math.ceil(others.length / 2));
+      others.forEach((item, i) => {
         const el = rows.get(item.id).el;
-        el.style.setProperty("--col", String(i < half ? 1 : 2));
-        el.style.setProperty("--row", String((i % half) + 1 + lead));
+        el.style.setProperty("--col", String(i < split ? 1 : 2));
+        el.style.setProperty("--row", String((i % split) + 1 + lead));
       });
-      const ordered = focusId ? [focusId, ...la.items.map((i) => i.id).filter((id) => id !== focusId)] : la.items.map((i) => i.id);
+      const ordered = focusId ? [focusId, ...others.map((i) => i.id)] : others.map((i) => i.id);
       ordered.forEach((id) => list.append(rows.get(id).el));
-      if (focusId) {
-        const fi = la.items.findIndex((i) => i.id === focusId);
-        vacant.style.setProperty("--col", String(fi < half ? 1 : 2));
-        vacant.style.setProperty("--row", String((fi % half) + 2));
-        list.append(vacant);
-      } else vacant.remove();
       list.style.setProperty("--rows", String(half));
       list.classList.toggle("has-focus", !!focusId);
       if (focusId && lastFocus !== undefined) replay(rows.get(focusId).el, "is-arrived");

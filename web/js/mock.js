@@ -46,7 +46,7 @@ const SCHEMA = [
 ].map(([key, section, label, axle, unit_imperial, unit_metric, drivetrains = ALL]) => ({ key, section, label, axle, unit_imperial, unit_metric, drivetrains }));
 const BY_KEY = Object.fromEntries(SCHEMA.map((s) => [s.key, s]));
 
-const CAR = { ordinal: 2254, class: 6, pi: 900, drivetrain: "RWD", name: "2014 Mazda #70 SpeedSource Lola B12/80", division: "Forza P2" };
+const CAR = { ordinal: 2240, class: 7, class_name: "P", pi: 949, drivetrain: "RWD", name: "2014 Mazda #70 SpeedSource Lola B12/80", division: "Forza P2" };
 const TRACK_ORDINAL = 860;
 
 // How a setup change nudges the demo car (per unit of change). After "Reset board"
@@ -504,7 +504,7 @@ export function createMockBackend() {
         evidence: `${spins}× rear slip > 1.0 in ${flying.length} laps, turns ${slowCorners.slice(-2).map((c) => c.number).join(" and ")}`,
         where: slowCorners.slice(-2).map((c) => ({ distance: r2(c.distance + 60, 0), corner: c.number })) },
       { id: "front-lockups", title: "Front lock-ups in the heavy stops", severity: 0.27,
-        evidence: `${Math.max(2, flying.length - 1)}× front slip < −1.0, turn ${TRACK.corners[1].number}`,
+        evidence: `${Math.max(2, flying.length - 1)}× front wheel stopped, turn ${TRACK.corners[1].number}`,
         where: [{ distance: r2(TRACK.corners[1].distance - 90, 0), corner: TRACK.corners[1].number }] },
     ];
     const chain = [

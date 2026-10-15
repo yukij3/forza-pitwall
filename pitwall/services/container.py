@@ -118,7 +118,7 @@ class Services:
         }
 
     def unit_system(self) -> str:
-        """``imperial`` or ``metric``, following the speed unit setting."""
+        """``imperial`` or ``metric``, following the tire pressure unit setting."""
         return unit_system_for(self.store.get_settings())
 
     # --- lap pipeline -------------------------------------------------------

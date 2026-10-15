@@ -32,7 +32,7 @@ The repository contains an example [`compose.yaml`](../compose.yaml) that builds
 the image from source:
 
 ```bash
-git clone https://github.com/OWNER/forza-pitwall.git
+git clone https://github.com/yukij3/forza-pitwall.git
 cd forza-pitwall
 mkdir -p data
 # edit compose.yaml: set PITWALL_PUBLIC_HOST to this machine's LAN IP
@@ -44,7 +44,7 @@ owned by root and the container (which does not run as root) cannot write to
 it. See [File permissions](#file-permissions).
 
 To use a published release image instead of building, replace `build: .` in
-`compose.yaml` with `image: ghcr.io/OWNER/forza-pitwall:latest`, then run
+`compose.yaml` with `image: ghcr.io/yukij3/forza-pitwall:latest`, then run
 `docker compose up -d`.
 
 ## docker run
@@ -58,7 +58,7 @@ docker run -d --name pitwall --restart unless-stopped \
   -p 5301:5301 \
   -v "$PWD/data:/data" \
   -e PITWALL_PUBLIC_HOST=192.168.1.20 \
-  ghcr.io/OWNER/forza-pitwall:latest
+  ghcr.io/yukij3/forza-pitwall:latest
 ```
 
 Replace `192.168.1.20` with the LAN IP of the machine running the container.
@@ -76,7 +76,7 @@ With an Unraid-style template:
 
 | Field | Value |
 |---|---|
-| Repository | `ghcr.io/OWNER/forza-pitwall:latest` |
+| Repository | `ghcr.io/yukij3/forza-pitwall:latest` |
 | Network type | Bridge |
 | Port | container `5300`, host `5300`, connection type **UDP** |
 | Port | container `5301`, host `5301`, connection type TCP |
@@ -107,7 +107,7 @@ ports on your router or expose it through a reverse proxy to the internet.
 You need Python 3.12 and [uv](https://docs.astral.sh/uv/):
 
 ```bash
-git clone https://github.com/OWNER/forza-pitwall.git
+git clone https://github.com/yukij3/forza-pitwall.git
 cd forza-pitwall
 uv sync
 PITWALL_PUBLIC_HOST=192.168.1.20 uv run python -m pitwall serve
@@ -208,8 +208,8 @@ Work through these in order while you are on track in the game.
 
 1. **Check what Pitwall sees.** The UI shows the receiver status, and so does
    the API: `curl http://<host>:5301/api/status`. While you are driving,
-   `receiver.packets_per_sec` should be close to 60 and `last_packet_age_s`
-   should stay small.
+   `receiver.packets_per_sec` should be about 60 on console or 120 to 160 on
+   PC, and `last_packet_age_s` should stay small.
 2. **Be on track.** The game starts sending once you are on track. In menus and
    while paused it reports that no race is running, and Pitwall does not record
    those frames.
@@ -217,7 +217,8 @@ Work through these in order while you are on track in the game.
    the LAN IP of the machine running Pitwall (not the container's `172.x.x.x`
    address, not the router); the port matches the host side of the UDP mapping;
    the packet format is **Car Dash**. The Sled format lacks lap times, inputs
-   and tire temperatures, so Pitwall cannot use it. If the server gets its IP
+   and tire temperatures, so Pitwall cannot use it; `/api/status` then shows
+   `ignored_packets` rising and `last_ignored_size` 232. If the server gets its IP
    from DHCP, give it a fixed address (a DHCP reservation in the router) so the
    game's setting stays correct.
 4. **Check that the port is published as UDP.** `docker ps` should show
@@ -244,6 +245,18 @@ server answers. A healthy container can still be receiving no telemetry.
 
 - **Built from source:** `git pull`, then `docker compose up -d --build`.
 - **Published image:** `docker compose pull`, then `docker compose up -d`.
+
+If the release notes say that lap splitting or the analysis changed, rebuild
+the laps of existing recordings from their raw packets, then restart:
+
+```bash
+docker compose exec pitwall python -m pitwall reindex
+docker compose restart pitwall
+```
+
+Without Docker, run `uv run python -m pitwall reindex`. Cached analysis results
+are recomputed automatically when the analysis version changes; `reindex` is
+only needed for the laps. See [storage.md](storage.md#rebuilding-laps-reindex).
 
 Everything Pitwall stores is in the data folder, which survives updates. To
 back it up, stop the container and copy the folder; copying the SQLite database

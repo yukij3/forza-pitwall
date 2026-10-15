@@ -36,7 +36,7 @@ export function mountShell(root, ctx) {
       links.set(key, a);
       return h("li", null, a);
     })),
-    h("p", { class: "rail__foot" }, mock ? "Demo data" : "")
+    h("p", { class: "rail__foot" }, mock ? "Demo" : "")
   );
 
   // --------------------------------------------------------------- strip
@@ -58,7 +58,7 @@ export function mountShell(root, ctx) {
   if (mock) {
     const select = h("select", { "aria-label": "Demo scenario", onchange: (e) => mock.setScenario(e.target.value) },
       mock.scenarios.map(([v, label]) => h("option", { value: v, selected: v === mock.scenario }, label)));
-    demo = h("div", { class: "demo-tag" }, h("span", null, "Demo", h("span", { class: "demo-tag__long" }, ", simulated data")), select);
+    demo = h("div", { class: "demo-tag" }, h("span", null, "Demo"), select);
   }
 
   const recLamp = h("span", { class: "rec-lamp", "aria-hidden": "true" });

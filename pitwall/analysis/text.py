@@ -12,10 +12,7 @@ LIMIT_TIRES = (
     f"Tire pressure and temperature across the tread (camber) aren't in Data Out: check "
     f"Telemetry {ARROW} Heat in game before changing pressure or camber."
 )
-LIMIT_TUNE = (
-    "Data Out doesn't include the tune: enter your current values in the tune sheet to get "
-    "target values instead of steps."
-)
+LIMIT_TUNE = "Data Out doesn't include the tune, so changes are steps, not target values."
 LIMIT_VALIDITY = (
     "Data Out doesn't report track-limit penalties: laps the game invalidated may still count."
 )

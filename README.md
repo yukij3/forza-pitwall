@@ -1,60 +1,64 @@
-# Pitwall
+<p align="center"><img src="docs/images/banner.png" alt="Pitwall" width="100%"></p>
 
-Telemetry recorder and tuning assistant for Forza Motorsport (2023).
+<p align="center">
+  <a href="https://github.com/yukij3/forza-pitwall/actions/workflows/ci.yml"><img src="https://github.com/yukij3/forza-pitwall/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/Forza%20Motorsport-2023-c4302b" alt="Forza Motorsport (2023)">
+</p>
 
-Pitwall listens to the game's Data Out telemetry, records your stints and turns
-the data into one tuning change at a time, worded the way the game's tuning menu
-words it: `Differential → Acceleration (Rear): −5%`. After you apply the change
-and drive again, it compares the laps and tells you whether the change helped.
-It is for Forza Motorsport players who tune their own cars and want a concrete
-next step rather than a wall of graphs. It runs in Docker on your PC or a home
-server, and you keep it open in a browser on a second screen.
-
-<!--
-  SCREENSHOT PLACEHOLDER
-  Add a real screenshot of the Live and Analysis screens here, for example:
-  ![Pitwall analysis screen](docs/images/analysis.png)
-  If it was taken in simulator or mock mode, say so in the caption.
--->
+Pitwall reads Forza Motorsport's Data Out telemetry while you drive and shows
+which setting to change next, in the words of the game's tuning menu.
 
 > **Status:** early development (0.1). The API and the stored data format may
 > still change between versions.
 
-## How a tuning session works
+<p align="center">
+  <img src="docs/images/live.png" alt="Live tuning board" width="100%"><br>
+  <sub>Live tuning board</sub>
+</p>
 
-1. **Drive a stint.** Start recording in Pitwall (or turn on auto-record) and
-   drive a few clean laps, typically 3 to 5.
-2. **Read one change.** Pitwall analyses the valid flying laps and shows the
-   single change it would make next, in game-menu terms, with the evidence behind
-   it and how confident it is. Up to two alternatives are listed in case you want
-   to try something else.
-3. **Apply it.** Make the change in the game's tuning menu and mark it as applied
-   in Pitwall. Pitwall saves a new version of your tune with that one value
-   changed.
-4. **Verify.** Drive the next stint. Pitwall compares it with the previous one
-   and reports whether the change helped: lap time, and the handling problem it
-   was meant to fix.
+## How it works
 
-Then repeat. One change per stint keeps cause and effect clear.
+1. **Drive.** Pitwall rates 12 handling items over your last ~12 corners.
+2. **Read the board.** Each item shows a status and the setting to change, e.g. `Anti-roll Bars → Front: −2`.
+3. **Change one setting** in the game, press **Reset board**, drive again.
 
 ## Features
 
-- **Live view** for a second screen, readable at a glance while driving: speed,
-  gear, rpm, inputs, lap times and tire state.
-- **Recording** started and stopped from the browser, or optionally started
-  automatically when you go on track. Laps are split and labelled (out, flying,
-  in); laps with a rewind or a pause are marked invalid.
-- **Lap analysis** with metrics such as corner balance on entry, mid-corner and
-  exit, wheelspin, lockups, bottoming out, time on the rev limiter, and tire
-  temperatures and wear. Each finding shows the evidence behind it.
-- **One recommendation at a time**, named exactly as in the tuning menu
-  (section, setting, axle, direction, amount), and only for settings that exist
-  for the car's drivetrain.
-- **Tune sheet** in the game's menu order, with a history of every change.
-- **Raw packets are kept** with each recording, so recordings stay useful when
-  the analysis changes.
-- **Self-contained**: one container, SQLite, no accounts, no cloud services, no
-  internet connection needed at runtime.
+- **Live tuning board** for a second screen. Items: corner entry, mid-corner
+  (slow and fast corners), exit, wheelspin on exit, front and rear lockups,
+  stability under braking, front and rear bottoming, gearing, tire temperature
+  front vs rear. Status is OK, Watch, Fix or Collecting (green, yellow, red,
+  grey); one item is the focus. It resets itself when you change car or track.
+- **Advice in menu terms**: one setting, a direction and a step (`−2`, `+5%`),
+  only for settings that exist on the car's drivetrain.
+- **Car recognition**: 681 cars by name and division.
+- **Baseline setups**: starting values for 16 car categories covering all 51
+  divisions, picked for the detected car. You can pick another category.
+- **Recording** of sessions and laps, split automatically across grid starts,
+  rewinds and race finishes. Optional auto-record.
+- **Lap and session analysis**: one next change plus up to two alternatives,
+  lap charts, lap comparison.
+- **Calibrated on real recordings**: lockups are a stopped wheel (works with
+  ABS on), timing follows the race clock at the PC's 120–160 packets/s, and
+  balance confidence accounts for gamepad steering.
+- **Raw packets are kept**, so `python -m pitwall reindex` can rebuild laps and
+  analysis after an update.
+- **Self-contained**: one container, SQLite, no accounts, no cloud, works
+  offline.
+
+<p><img src="docs/images/session.png" alt="Session analysis" width="100%"><br>
+<sub>Session analysis</sub></p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/images/lap.png" alt="Lap detail" width="100%"><br><sub>Lap detail: speed, inputs, slip and track map</sub></td>
+    <td width="50%" valign="top"><img src="docs/images/baseline.png" alt="Baseline setup" width="100%"><br><sub>Baseline setup for the detected car</sub></td>
+  </tr>
+</table>
+
+<sub>Screenshots: demo mode (`/?mock=1`).</sub>
 
 ## Quick start (Docker Compose)
 
@@ -62,7 +66,7 @@ You need Docker with Compose v2 on a machine in the same local network as the
 device running the game. That can be the gaming PC itself.
 
 ```bash
-git clone https://github.com/OWNER/forza-pitwall.git
+git clone https://github.com/yukij3/forza-pitwall.git
 cd forza-pitwall
 mkdir -p data
 ```
@@ -76,15 +80,13 @@ docker compose up -d --build
 ```
 
 Open `http://<that IP>:5301` in a browser. The database and recordings are
-stored in `./data`.
-
-Pitwall receives telemetry on UDP port 5300 and serves the web UI on TCP port
-5301. Both can be changed; see [docs/install.md](docs/install.md).
+stored in `./data`. Telemetry comes in on UDP port 5300; both ports can be
+changed, see [docs/install.md](docs/install.md).
 
 ## Set up Data Out in the game
 
-In Forza Motorsport, open **Settings → Gameplay & HUD** and scroll down to the
-**UDP Race Telemetry** section:
+In Forza Motorsport, open **Settings → Gameplay & HUD** and scroll down to
+**UDP Race Telemetry**:
 
 | Option | Value |
 |---|---|
@@ -93,67 +95,56 @@ In Forza Motorsport, open **Settings → Gameplay & HUD** and scroll down to the
 | Data Out IP Port | 5300 |
 | Data Out Packet Format | Car Dash ("Dash" in the official documentation) |
 
-If Pitwall runs on the same PC as the game, `127.0.0.1` also works.
-
-The game starts sending once you are on track. In menus and while paused it
-reports that no race is running, and Pitwall does not record those frames. If
-the UI shows no packets while you are driving, see
-[Troubleshooting](docs/install.md#troubleshooting-no-packets).
+If Pitwall runs on the same PC as the game, `127.0.0.1` also works. The game
+sends only while you are on track. If the UI shows no packets while you drive,
+see [Troubleshooting](docs/install.md#troubleshooting-no-packets).
 
 ## Running on a home server or NAS
 
-An always-on box is a good place for Pitwall: the game sends telemetry to it
-over the network, and you open the UI from any device on the LAN. Publish
-5300/udp and 5301/tcp, map a persistent folder to `/data` and set
+Publish 5300/udp and 5301/tcp, map a persistent folder to `/data` and set
 `PITWALL_PUBLIC_HOST` to the server's IP. [docs/install.md](docs/install.md)
-covers `docker run`, Unraid-style container templates, file permissions and
-firewalls.
-
-Pitwall has no login. Keep it on your local network and do not forward its
+covers `docker run`, Unraid-style templates, file permissions and firewalls.
+Pitwall has no login: keep it on your local network and do not forward its
 ports to the internet.
 
 ## What Data Out cannot see
 
-Pitwall only knows what the game sends, and some things that matter for tuning
-are not in the stream:
-
-- **Tire pressure.** Not sent at all.
-- **Temperature across the tread.** The game sends one temperature per tire,
-  not inner, middle and outer, so camber cannot be judged from telemetry. Use
-  the game's own telemetry screens for pressure and camber.
-- **Your current tune.** Pitwall cannot read it. Enter the values in the tune
-  sheet; without them, a recommendation gives a direction and a step instead of
-  a target value.
-- **Car and track names.** Only numeric IDs are sent.
-- **Lap validity.** Track-limit penalties are not reported. Pitwall can only
-  detect rewinds and pauses.
+- **Tire pressure** and **temperature across the tread**: one temperature per
+  tire, no pressures, so camber can't be judged. Use the game's telemetry
+  screens for those.
+- **Your current tune**: advice is a relative step (`−2`), not a target value.
+- **Track names**: only numeric IDs. Car names come from a bundled list.
+- **Lap validity**: track-limit penalties aren't reported; Pitwall only
+  detects rewinds and pauses.
+- **Driver aids**: ABS and traction control state aren't sent.
 
 Where these gaps affect a recommendation, Pitwall says so instead of guessing.
+
+## Roadmap
+
+- **Tune sheet and change verification**: target values instead of steps, and
+  a check of whether the last change helped.
+- **Helper on the gaming PC**: reads the tuning screen; later applies changes
+  through a virtual gamepad. Menu input only, never memory editing.
+- **More calibration on real data**: wheels, ABS off, other car types.
 
 ## Development
 
 Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync                          # dependencies, including dev tools
-uv run pytest                    # tests
-uv run ruff check .              # lint
-uv run python -m pitwall serve   # UDP 5300, web UI on http://localhost:5301
+uv sync                            # dependencies, including dev tools
+uv run pytest                      # tests
+uv run ruff check .                # lint
+uv run python -m pitwall serve     # UDP 5300, web UI on http://localhost:5301
+uv run python -m pitwall simulate  # synthetic telemetry, in a second terminal
 ```
 
-To try Pitwall without the game, run the simulator in a second terminal while
-the server is running. It generates synthetic Data Out telemetry:
-
-```bash
-uv run python -m pitwall simulate
-```
-
-`python -m pitwall replay <file>` plays back a recorded packet file. The web UI
-also has a mock mode, `http://localhost:5301/?mock=1`, that fakes the API and
-the live feed, for working on the UI alone.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for code style and module boundaries, and
-[docs/architecture.md](docs/architecture.md) for how the parts fit together.
+`python -m pitwall replay <file>` plays back a recorded packet file, and
+`python -m pitwall reindex` rebuilds laps from them. Demo mode,
+`http://localhost:5301/?mock=1`, fakes the API and the live feed in the
+browser. See [CONTRIBUTING.md](CONTRIBUTING.md) and
+[docs/architecture.md](docs/architecture.md).
 
 ## Project layout
 
@@ -161,16 +152,18 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for code style and module boundaries, and
 pitwall/
   telemetry/    Data Out packet format, UDP receiver, lap splitting, Frame model
   storage/      SQLite database and raw packet files
-  analysis/     lap metrics, handling diagnosis, recommendations (no I/O)
+  analysis/     lap and session analysis, live tuning board, rulebook (no I/O)
+  baselines/    car list and baseline setups per car category (bundled JSON)
+  services/     recorder, live board runner, analysis runner and result cache
   api/          REST and WebSocket API (FastAPI)
   tune/         tune settings in the game's menu order, with in-game names
-  tools/        simulator and replay
+  tools/        simulator, replay and reindex
   app.py        application wiring
   config.py     configuration from environment variables
-  __main__.py   command line: serve, simulate, replay
+  __main__.py   command line: serve, simulate, replay, reindex
 web/            browser UI: plain HTML, CSS and JavaScript, no build step
 tests/          pytest suites, one folder per area
-docs/           installation, architecture, API, storage and analysis notes
+docs/           installation, architecture, API, storage, analysis, baselines
 ```
 
 ## Disclaimer
@@ -182,4 +175,6 @@ describe what the software works with.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The bundled car list is based on
+[bluemanos/forza-motorsport-car-track-ordinal](https://github.com/bluemanos/forza-motorsport-car-track-ordinal)
+(MIT); see [docs/baselines.md](docs/baselines.md).

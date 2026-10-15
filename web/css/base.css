@@ -202,7 +202,6 @@ a:hover { text-decoration-color: var(--orange); }
   .strip { position: sticky; top: 0; padding: var(--s-2) var(--s-3); gap: var(--s-2) var(--s-3); }
   .strip__context { font-size: var(--t-sm); gap: var(--s-1) var(--s-3); width: 100%; order: 3; }
   .strip__end { margin-left: 0; width: 100%; justify-content: space-between; order: 2; }
-  .demo-tag__long { display: none; }
   .main { padding: var(--s-3); overflow: visible; }
   .view { height: auto; }
   .toasts { left: var(--s-4); right: var(--s-4); bottom: 5rem; align-items: stretch; }

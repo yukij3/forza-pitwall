@@ -191,7 +191,7 @@ GEARING_LONG_CONFIDENCE = 0.45  # Data Out doesn't say how many gears the car ha
 MIN_NEXT_CHANGE_CONFIDENCE = 0.35
 MIN_NEXT_CHANGE_SCORE = 0.05
 MIN_ALTERNATIVE_SCORE = 0.02
-NO_AERO_PRIOR_FACTOR = 0.5  # tune sheet filled in but without aero values
+NO_AERO_PRIOR_FACTOR = 0.5  # tune values given but without aero values
 
 # --- Session -------------------------------------------------------------------
 LAP_TIME_NOISE_MIN_S = 0.15

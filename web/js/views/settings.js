@@ -48,7 +48,7 @@ export function mount(main, ctx) {
         h("div", { class: "panel__head" }, h("h2", { id: "about-title", class: "panel__title" }, "About")),
         h("div", { class: "panel__body settings__about" },
           h("p", null, "Not affiliated with Microsoft or Turn 10 Studios."),
-          ctx.mock ? h("p", { class: "notice notice--warn" }, flag("yellow"), h("span", null, "Demo: simulated, not saved")) : null))),
+          ctx.mock ? h("p", { class: "notice notice--warn" }, flag("yellow"), h("span", null, "Demo · not saved")) : null))),
       h("section", { class: "panel", "aria-labelledby": "dataout-title" },
         h("div", { class: "panel__head" }, h("h2", { id: "dataout-title", class: "panel__title" }, "Data Out")),
         h("div", { class: "panel__body" },

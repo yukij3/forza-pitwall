@@ -41,8 +41,11 @@ snapshot = board.push(frame)  # LiveAnalysis or None; board.snapshot(), board.re
 
 `drivetrain` is the Data Out integer (0 = FWD, 1 = RWD, 2 = AWD) or the
 string. `tune_values` uses the keys of `pitwall/tune/settings.py`, as numbers
-shown in the game; it may be empty or partial. `LapContext.lap_time` is an
-optional override; otherwise the lap time is the last frame's `current_lap`.
+shown in the game; it may be empty or partial. Pitwall v1 doesn't track the
+tune, so the server passes no tune values, no tune changes and no previous
+session; the parts below that use them apply once tune values are provided
+(on the roadmap). `LapContext.lap_time` is an optional override; otherwise the
+lap time is the last frame's `current_lap`.
 
 Every result has `to_dict()` with JSON-ready output in the API's canonical
 units: m/s, °C, m, s, pedals 0..1. Frames themselves stay in raw game units
@@ -318,8 +321,8 @@ Each finding maps to changes in order of preference; the number in brackets is
 the rule's prior (how directly the setting addresses the symptom). Candidates
 are dropped when the setting doesn't exist for the drivetrain
 (`settings.py`), when a rule is limited to some drivetrains or to the axle the
-symptom is on, and when the tune sheet shows the setting already at the end of
-its range.
+symptom is on, and, when tune values are provided, when the setting is already
+at the end of its range.
 
 | Finding | Changes (imperial steps) |
 |---|---|
@@ -349,7 +352,7 @@ Notes:
   acceleration, less speed per gear). On the limiter before the braking point →
   lower it; the top gear used ending the longest straight well below the
   limiter → raise it.
-- **Aero** rules assume adjustable aero. If the tune sheet has values but none
+- **Aero** rules assume adjustable aero. If tune values are provided but none
   for aero, aero changes get half their prior, so the mechanical alternative
   leads.
 - **Tire pressure** changes are direction-only and low confidence (0.25);
@@ -373,9 +376,9 @@ Notes:
 The text is `Section → Label (Axle): ±step unit`, or `Section → Axle` when the
 label repeats the section (`Anti-roll Bars → Front: −2`), with a hint for
 settings whose direction isn't obvious (`(more front)`, `(longer)`).
-`suggested_value` is filled only when `tune_values` has the current value; it
-is clamped to known in-game ranges (anti-roll bars 1–65, differential and
-balances 0–100 %, otherwise not below zero).
+`suggested_value` is filled only when `tune_values` has the current value
+(always null in v1); it is clamped to known in-game ranges (anti-roll bars
+1–65, differential and balances 0–100 %, otherwise not below zero).
 
 Recommendation fields: `id` (`<setting>-up|down`, or `revert-<setting>`),
 `finding_id`, `setting`, `section`, `label`, `axle`, `direction`, `step`,
@@ -415,6 +418,10 @@ A recommendation's confidence is the finding's confidence × the rule prior.
   (`consistent` / `variable` / `inconsistent`).
 
 ### Verdict on the last change
+
+This applies when the caller provides a `previous_session` and the
+`tune_changes` since then. v1 tracks no tunes and passes neither, so
+`verdict_on_last_change` is null; tune tracking is on the roadmap.
 
 With a `previous_session`:
 
@@ -475,9 +482,9 @@ number, last/best lap, distance, tire temperatures and wear carry over). Frame
 - **Tire pressure and camber.** Data Out has no pressures and one temperature
   per tire, so pressure advice is direction-only and camber isn't judged.
   Check Telemetry → Heat in game.
-- **The tune.** It isn't in the stream; suggested values exist only for
-  settings entered in the tune sheet. Whether the car has adjustable aero is
-  unknown.
+- **The tune.** It isn't in the stream, and v1 doesn't track it, so
+  recommendations are relative steps without suggested values. Whether the car
+  has adjustable aero is unknown.
 - **Gear count.** Not in the stream. "Gearing too long" means the highest gear
   used ends the longest straight short of the peak-power rpm; an unused top
   gear can't be seen directly.
