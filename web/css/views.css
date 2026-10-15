@@ -186,35 +186,58 @@ button.chip:hover { border-color: var(--ink-3); color: var(--ink); background: v
 .dot--b { fill: none; stroke: var(--series-b); }
 
 /* --------------------------------------------------------------- baseline
-   A printed setup sheet: sections in the game's menu order, flowed into
-   columns so the whole car fits one screen. */
+   A printed setup sheet: sections in the game's menu order, one row per
+   setting with Front and Rear side by side, flowed into columns so the whole
+   car fits one screen. Notes and ranges of relative values sit in tooltips. */
 
 .base-kicker { font-size: var(--t-md); font-weight: 500; color: var(--ink-3); }
+.base-kicker[data-tip] { cursor: help; text-decoration: underline dotted var(--ink-3); text-underline-offset: 0.25em; }
 .base-view .inline-field .select { min-width: 18rem; min-height: 2.35rem; }
 .base-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 17rem; gap: var(--s-5); }
 .base-main { min-width: 0; min-height: 0; overflow: auto; }
-.base-sheet { columns: 2 30rem; column-gap: var(--s-6); column-rule: 1px solid var(--rule); }
+.base-sheet { columns: 3 22rem; column-gap: var(--s-6); column-rule: 1px solid var(--rule); }
 .base-sec { break-inside: avoid; margin-bottom: var(--s-3); }
+.base-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.base-table th, .base-table td { padding: 0.3rem 0; vertical-align: top; text-align: left; font-weight: inherit; }
 .base-sec__title {
+  width: 46%;
   font-size: var(--t-sm); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--orange-ink);
-  padding-bottom: 0.15rem; border-bottom: 1px solid var(--rule-strong);
 }
-.base-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: var(--t-base); }
-.base-row > * { padding: 0.18rem var(--s-2) 0.18rem 0; border-bottom: 1px solid var(--rule); vertical-align: baseline; }
-.base-row__label { width: 30%; text-align: left; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.base-row:not(.is-first) > * { border-top: 0; }
-.base-row__axle { width: 11%; color: var(--ink-2); }
-.base-row__value { width: 19%; font-size: var(--t-md); font-weight: 700; color: var(--ink); white-space: nowrap; }
-.base-row__value--rel { font-size: var(--t-base); font-weight: 600; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.base-row__range { width: 17%; color: var(--ink-3); font-size: var(--t-sm); white-space: nowrap; vertical-align: middle; }
-/* The game's slider, drawn the way the board draws a gauge: flat track, filled to the mark. */
-.base-slider { position: relative; display: block; block-size: 0.5rem; margin-right: var(--s-3); background: var(--tarmac-0); box-shadow: inset 0 0 0 1px var(--rule-strong); }
-.base-slider__fill { position: absolute; inset-block: 0; left: 0; background: oklch(1 0 0 / 0.16); }
-.base-slider__mark { position: absolute; top: -0.25rem; bottom: -0.25rem; width: 0.25rem; margin-left: -0.125rem; background: var(--ink); }
-.base-note { border-bottom: 1px dotted var(--ink-3); cursor: help; }
-.base-note__full { display: none; }
-.base-row__note { color: var(--ink-3); font-size: var(--t-sm); line-height: 1.15; padding-right: 0; }
-.base-row__note span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.base-sec__axle { width: 27%; font-size: var(--t-xs); font-weight: 600; color: var(--ink-3); text-align: right !important; }
+.base-table thead th, .base-table thead td { padding: 0 0 0.15rem; border-bottom: 1px solid var(--rule-strong); vertical-align: bottom; }
+.base-row > * { border-bottom: 1px solid var(--rule); }
+.base-row__label { padding-right: var(--s-2) !important; font-size: var(--t-base); font-weight: 500; color: var(--ink); line-height: 1.2; }
+.base-row__name { margin-right: 0.35em; }
+
+/* Note marker: a small square "i", the only way into a setting's note. */
+.base-info {
+  display: inline-grid; place-items: center; vertical-align: 0.1em;
+  inline-size: 1.15rem; block-size: 1.15rem; padding: 0;
+  font: italic 700 0.75rem/1 var(--font); color: var(--ink-3);
+  background: transparent; border: 1px solid var(--rule-strong); cursor: help;
+}
+.base-info:hover, .base-info:focus-visible { color: var(--ink); border-color: var(--ink-3); }
+
+.base-v { text-align: right !important; padding-left: var(--s-2) !important; }
+.base-v__main { display: block; font-size: var(--t-md); font-weight: 700; color: var(--ink); line-height: 1.15; white-space: nowrap; }
+.base-v__range { display: block; font-size: var(--t-xs); color: var(--ink-3); line-height: 1.2; white-space: nowrap; }
+.base-v--span { text-align: right !important; }
+.base-v--default .base-v__main, .base-v--rule .base-v__main { font-size: var(--t-base); font-weight: 500; color: var(--ink-3); }
+.base-v--text .base-v__main { font-size: var(--t-sm); font-weight: 500; color: var(--ink-2); white-space: normal; }
+.base-v--rel { cursor: help; }
+
+/* The game's slider, drawn the way the board draws a gauge: flat track, hatched range, a mark. */
+.base-slider { position: relative; display: block; block-size: 0.4rem; margin: 0.3rem 0 0 auto; inline-size: min(100%, 5.5rem); background: var(--tarmac-0); box-shadow: inset 0 0 0 1px var(--rule-strong); }
+.base-slider__band { position: absolute; inset-block: 0; background: repeating-linear-gradient(-45deg, oklch(1 0 0 / 0.22) 0 2px, transparent 2px 5px); }
+.base-slider__mark { position: absolute; top: -0.2rem; bottom: -0.2rem; width: 0.25rem; margin-left: -0.125rem; background: var(--ink); }
+
+.base-tip {
+  position: fixed; z-index: 60; max-inline-size: min(30rem, calc(100vw - 1rem));
+  padding: var(--s-2) var(--s-3);
+  background: var(--tarmac-3); color: var(--ink); border: 1px solid var(--rule-strong);
+  box-shadow: 0 8px 24px oklch(0 0 0 / 0.45);
+  font-size: var(--t-sm); line-height: 1.4; white-space: pre-line; pointer-events: none;
+}
 
 .base-side { min-height: 0; overflow: auto; display: grid; align-content: start; gap: var(--s-4); padding: var(--s-3) var(--s-4); background: var(--tarmac-1); border: 1px solid var(--rule); }
 .base-facts { display: grid; gap: var(--s-2); }
@@ -223,7 +246,6 @@ button.chip:hover { border-color: var(--ink-3); color: var(--ink); background: v
 .base-facts dd { font-size: var(--t-base); font-weight: 600; color: var(--ink); }
 .base-facts__car dd { font-size: var(--t-md); line-height: 1.2; }
 .base-notes { display: grid; gap: var(--s-3); }
-.base-notes__list { display: grid; gap: var(--s-1); color: var(--ink-2); font-size: var(--t-sm); }
 .base-sources summary, .limits summary { cursor: pointer; font-size: var(--t-sm); font-weight: 600; color: var(--ink-2); }
 .base-sources summary:hover, .limits summary:hover { color: var(--ink); }
 .base-sources ul { display: grid; gap: var(--s-1); margin-top: var(--s-2); font-size: var(--t-sm); }
@@ -258,23 +280,6 @@ button.chip:hover { border-color: var(--ink-3); color: var(--ink); background: v
 }
 @media (max-width: 760px) {
   .base-sheet { columns: 1; }
-  .base-table, .base-table tbody { display: block; }
-  .base-row {
-    display: grid; grid-template-columns: minmax(0, 1fr) 3.4rem 7.5rem;
-    grid-template-areas: "label axle value" "note note range";
-    column-gap: var(--s-2); padding: 0.3rem 0; border-bottom: 1px solid var(--rule);
-  }
-  .base-row > * { width: auto; padding: 0; border: 0; }
-  .base-row__label { grid-area: label; white-space: normal; }
-  .base-row__axle { grid-area: axle; }
-  .base-row__value { grid-area: value; text-align: right; }
-  .base-row__value--rel { white-space: normal; }
-  .base-row__range { grid-area: range; text-align: right; }
-  .base-row__note { grid-area: note; }
-  .base-note { border: 0; cursor: auto; }
-  .base-note__short { display: none; }
-  .base-note__full { display: inline; }
-  .base-slider { margin: 0.45rem 0 0 auto; inline-size: 7rem; }
   .base-view .inline-field { width: 100%; }
   .base-view .inline-field .select { min-width: 0; flex: 1; }
   .flagcode > div { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
