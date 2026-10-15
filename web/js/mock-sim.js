@@ -337,7 +337,7 @@ export class Driver {
       throttle,
       brake,
       steer,
-      lap_number: this.lapNumber,
+      lap_number: this.lapNumber + 1, // API lap numbers are 1-based
       current_lap: this.currentLap,
       last_lap: this.lastLap,
       best_lap: this.bestLap,

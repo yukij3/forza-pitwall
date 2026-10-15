@@ -71,6 +71,8 @@ class LiveHub:
     # --- inputs -------------------------------------------------------------
 
     def on_frame(self, frame: Frame, raw: bytes = b"") -> None:
+        if not frame.is_race_on:  # menu/pause packets carry zeros, not telemetry
+            return
         self._latest = frame
         self._seq += 1
 

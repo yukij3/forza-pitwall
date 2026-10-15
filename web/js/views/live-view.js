@@ -241,7 +241,7 @@ export function mount(main, ctx) {
     }
     const w = la.window || {};
     const parts = [];
-    if (w.corners !== undefined) parts.push(`Last ${w.corners} ${w.corners === 1 ? "corner" : "corners"}${w.laps !== undefined ? ` · ${w.laps} ${w.laps === 1 ? "lap" : "laps"}` : ""}`);
+    if (w.corners !== undefined) parts.push(`Last ${w.corners} ${w.corners === 1 ? "corner" : "corners"}${w.laps != null ? ` · ${w.laps} ${w.laps === 1 ? "lap" : "laps"}` : ""}`);
     if (la.corners_seen !== undefined) parts.push(`${la.corners_seen} since reset`);
     setText(windowEl, parts.join(" · ") || "");
     if (la.items.length === 0) {
@@ -474,7 +474,7 @@ function buildSide() {
   function pushFrame(f) {
     if (!f) return;
     // timing
-    setText(lapNo, f.lap_number !== undefined ? String(f.lap_number + 1) : "–");
+    setText(lapNo, f.lap_number !== undefined ? String(f.lap_number) : "–"); // already 1-based
     setText(current, U.fmtLapTime(f.current_lap));
     setText(last, U.fmtLapTime(f.last_lap));
     setText(best, U.fmtLapTime(f.best_lap));
