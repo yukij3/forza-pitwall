@@ -2,12 +2,16 @@
 
 One gzip file per session. Decompressed, the file is::
 
-    MAGIC (8 bytes, b"PWRAW001")
+    MAGIC (8 bytes, b"PWRAW002"; b"PWRAW001" for files from older versions)
     record*  where record = <recv_time: f64 LE> <length: u16 LE> <payload: length bytes>
 
 ``recv_time`` is the receiving host's monotonic clock in seconds; only the
 differences between records are meaningful. The payload is the UDP datagram
 exactly as received, so it can be re-parsed or replayed later.
+
+Version 2 files also hold one race-off packet each time the game leaves the
+race (menu, pause, rewind screen, finish), so the recording can be segmented
+again exactly as it was live. Version 1 files only hold race-on packets.
 
 The writer flushes the compressor regularly, so a file left behind by a crash is
 readable up to the last flush; the reader stops quietly at a truncated tail.
@@ -21,7 +25,9 @@ import zlib
 from collections.abc import Iterator
 from pathlib import Path
 
-MAGIC = b"PWRAW001"
+MAGIC = b"PWRAW002"
+MAGIC_V1 = b"PWRAW001"
+_VERSIONS = {MAGIC: 2, MAGIC_V1: 1}
 _RECORD = struct.Struct("<dH")
 _CHUNK = 1 << 16
 
@@ -82,7 +88,7 @@ def iter_records(
         if not header_checked:
             if len(buf) < len(MAGIC):
                 continue
-            if bytes(buf[: len(MAGIC)]) != MAGIC:
+            if bytes(buf[: len(MAGIC)]) not in _VERSIONS:
                 raise RawLogError(f"{path.name}: not a pitwall raw packet file")
             header_checked = True
             pos = len(MAGIC)
@@ -102,3 +108,12 @@ def iter_records(
 
 def read_records(path: Path, start: int = 0, count: int | None = None) -> list[tuple[float, bytes]]:
     return list(iter_records(path, start, count))
+
+
+def raw_version(path: Path) -> int:
+    """Format version of a raw packet file (1 or 2)."""
+    with gzip.open(path, "rb") as fh:
+        magic = fh.read(len(MAGIC))
+    if magic not in _VERSIONS:
+        raise RawLogError(f"{path.name}: not a pitwall raw packet file")
+    return _VERSIONS[magic]

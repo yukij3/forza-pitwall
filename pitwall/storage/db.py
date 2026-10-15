@@ -17,7 +17,7 @@ from typing import Any
 
 from pitwall.telemetry.canonical import class_name
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DB_NAME = "pitwall.db"
 RAW_DIR = "raw"
 
@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS laps (
     invalid_reason TEXT,
     frame_count    INTEGER NOT NULL,
     first_frame    INTEGER NOT NULL,
+    last_frame     INTEGER NOT NULL,
     started_at     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS laps_session ON laps(session_id);
@@ -69,7 +70,7 @@ CREATE TABLE IF NOT EXISTS analysis_cache (
 
 _LAP_COLUMNS = (
     "id, session_id, number, lap_time, kind, valid, invalid_reason, frame_count, "
-    "first_frame, started_at"
+    "first_frame, last_frame, started_at"
 )
 _SESSION_SELECT = """
 SELECT s.*,
@@ -115,6 +116,10 @@ class Store:
             if version > SCHEMA_VERSION:
                 raise RuntimeError(f"database schema {version} is newer than this pitwall")
             self._db.executescript(_SCHEMA)
+            lap_columns = {r[1] for r in self._db.execute("PRAGMA table_info(laps)")}
+            if "last_frame" not in lap_columns:  # schema 1 -> 2
+                self._db.execute("ALTER TABLE laps ADD COLUMN last_frame INTEGER")
+                self._db.execute("UPDATE laps SET last_frame = first_frame + frame_count - 1")
             self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     def _query(self, sql: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
@@ -232,11 +237,13 @@ class Store:
         invalid_reason: str | None,
         frame_count: int,
         first_frame: int,
+        last_frame: int,
         started_at: str,
     ) -> dict[str, Any]:
         cur = self._execute(
             "INSERT INTO laps (session_id, number, lap_time, kind, valid, invalid_reason, "
-            "frame_count, first_frame, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "frame_count, first_frame, last_frame, started_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session_id,
                 number,
@@ -246,10 +253,50 @@ class Store:
                 invalid_reason,
                 frame_count,
                 first_frame,
+                last_frame,
                 started_at,
             ),
         )
         return self.get_lap(int(cur.lastrowid or 0))
+
+    def replace_laps(self, session_id: int, laps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Swap a session's laps for a new set (re-segmenting); drops cached analysis."""
+        with self._lock:
+            self._db.execute("BEGIN")
+            try:
+                self._db.execute(
+                    "DELETE FROM analysis_cache WHERE kind = 'lap' AND ref_id IN "
+                    "(SELECT id FROM laps WHERE session_id = ?)",
+                    (session_id,),
+                )
+                self._db.execute(
+                    "DELETE FROM analysis_cache WHERE kind = 'session' AND ref_id = ?",
+                    (session_id,),
+                )
+                self._db.execute("DELETE FROM laps WHERE session_id = ?", (session_id,))
+                for lap in laps:
+                    self._db.execute(
+                        "INSERT INTO laps (session_id, number, lap_time, kind, valid, "
+                        "invalid_reason, frame_count, first_frame, last_frame, started_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            session_id,
+                            lap["number"],
+                            lap["lap_time"],
+                            lap["kind"],
+                            int(lap["valid"]),
+                            lap["invalid_reason"],
+                            lap["frame_count"],
+                            lap["first_frame"],
+                            lap["last_frame"],
+                            lap["started_at"],
+                        ),
+                    )
+                self._db.execute("COMMIT")
+            except Exception:
+                self._db.execute("ROLLBACK")
+                raise
+        return self.list_laps(session_id)
 
     def get_lap(self, lap_id: int) -> dict[str, Any]:
         rows = self._query(f"SELECT {_LAP_COLUMNS} FROM laps WHERE id = ?", (lap_id,))
@@ -340,5 +387,6 @@ def _lap_dict(row: sqlite3.Row) -> dict[str, Any]:
         "invalid_reason": row["invalid_reason"],
         "frame_count": row["frame_count"],
         "first_frame": row["first_frame"],
+        "last_frame": row["last_frame"],
         "started_at": row["started_at"],
     }
