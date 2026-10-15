@@ -1,14 +1,18 @@
 // Baseline: approximate starting values for the car type on track, laid out
-// in the game's tuning-menu order. Read-only. A category can be picked by
-// hand (#/baseline?category=gt3) when the match is wrong or no car is on track.
+// in the game's tuning-menu order, one row per setting with Front and Rear
+// side by side. Read-only. Notes and ranges live in tooltips so the whole
+// car fits one screen. A category can be picked by hand
+// (#/baseline?category=gt3) when the match is wrong or no car is on track.
 
-import { h, clear, gameText } from "../dom.js";
+import { h, clear } from "../dom.js";
 import { store } from "../store.js";
 import * as U from "../units.js";
 import { describeError } from "../api.js";
 
 const HOW = { ordinal: "Car model", division: "Division", class_drivetrain: "Class + drivetrain" };
 const LEVEL = { high: "High", medium: "Medium", low: "Low" };
+
+// ------------------------------------------------------------- formatting
 
 const decimalsOf = (v) => {
   const n = Number(v);
@@ -17,16 +21,15 @@ const decimalsOf = (v) => {
   return s.includes(".") ? s.split(".")[1].length : 0;
 };
 
-/** Decimals for a row: as precise as its value or range, and at least the game's own step for the unit. */
-function rowDecimals(r) {
-  const min = r.unit === "psi" || r.unit === "°" || r.unit === "in" ? 1 : r.unit === "bar" ? 2 : 0;
-  return Math.max(min, decimalsOf(r.value), ...(Array.isArray(r.range) ? r.range.map(decimalsOf) : [0]));
+/** Decimals for a setting: as precise as its value or range, at least the game's step for the unit. */
+function decimalsFor(s) {
+  const min = s.unit === "psi" || s.unit === "°" || s.unit === "in" ? 1 : s.unit === "bar" ? 2 : 0;
+  return Math.max(min, decimalsOf(s.value), ...(Array.isArray(s.range) ? s.range.map(decimalsOf) : [0]));
 }
 
 function num(v, d) {
-  if (v === null || v === undefined) return "";
   const n = Number(v);
-  if (!Number.isFinite(n)) return String(v);
+  if (!Number.isFinite(n)) return String(v ?? "");
   return U.minus(n.toFixed(d));
 }
 
@@ -38,76 +41,154 @@ function withUnit(v, unit, d) {
   return `${s} ${unit}`;
 }
 
-/** "≈ 60% of slider" → 60, for drawing the slider position. */
-function sliderPct(relative) {
-  const m = String(relative || "").match(/(\d+(?:\.\d+)?)\s*%\s*of\s+(?:the\s+)?slider/i);
-  return m ? Math.min(100, Math.max(0, Number(m[1]))) : null;
+/** "≈100% of slider (60–100%)" → { pct: 100, lo: 60, hi: 100 }. */
+export function parseRelative(text) {
+  const t = String(text || "").replace(/−/g, "-");
+  const m = t.match(/(\d+(?:\.\d+)?)\s*%\s*of\s+(?:the\s+)?slider/i);
+  if (!m) return null;
+  const r = t.match(/\(\s*(\d+(?:\.\d+)?)\s*%?\s*(?:–|-|…|to)\s*(\d+(?:\.\d+)?)\s*%\s*\)/);
+  const clamp = (x) => Math.min(100, Math.max(0, Number(x)));
+  return { pct: clamp(m[1]), lo: r ? clamp(r[1]) : null, hi: r ? clamp(r[2]) : null };
 }
 
-/** In-game style slider track with the suggested position marked. */
-function sliderTrack(pct) {
-  return h("span", { class: "base-slider", "aria-hidden": "true" },
-    h("i", { class: "base-slider__fill", style: { width: `${pct}%` } }),
-    h("i", { class: "base-slider__mark", style: { left: `${pct}%` } }));
-}
+const DEFAULT_NOTE = /\b(default|as (?:built|delivered)|the build gives)\b/i;
 
-const SHORT_NOTE_WORDS = 4;
-function noteCell(note) {
-  if (!note) return h("td", { class: "base-row__note" });
-  const text = U.minus(note);
-  if (text.trim().split(/\s+/).length <= SHORT_NOTE_WORDS) return h("td", { class: "base-row__note" }, gameText(text));
-  // Longer notes live in a tooltip on desktop; phones have room to show them in full.
-  return h("td", { class: "base-row__note" },
-    h("span", { class: "base-note", title: text, tabindex: "0" }, h("span", { class: "base-note__short" }, "Note"), h("span", { class: "base-note__full" }, gameText(text))));
-}
+// ------------------------------------------------------------------ sheet
 
-function rangeText(range, d) {
-  if (!Array.isArray(range) || range.length !== 2) return "";
-  return `${num(range[0], d)} … ${num(range[1], d)}`;
-}
-
-/** Group settings into sections, keeping server (menu) order. */
-function sections(settings) {
+/**
+ * Sections in server (menu) order; inside each, one row per label with the
+ * Front and Rear settings side by side. Axle-less settings span both columns.
+ */
+function sectionsOf(settings) {
   const out = [];
   for (const s of settings || []) {
     let sec = out[out.length - 1];
     if (!sec || sec.name !== s.section) out.push((sec = { name: s.section, rows: [] }));
-    sec.rows.push(s);
+    let row = sec.rows.find((r) => r.label === s.label && !r.single && s.axle);
+    if (!row || (s.axle && row[s.axle.toLowerCase()])) {
+      row = { label: s.label, front: null, rear: null, single: null };
+      sec.rows.push(row);
+    }
+    if (s.axle === "Front") row.front = s;
+    else if (s.axle === "Rear") row.rear = s;
+    else row.single = s;
   }
   return out;
 }
 
+/** Tooltip text for a row: notes de-duplicated, range of relative values. */
+function rowTip(row) {
+  const parts = [];
+  const items = [row.single, row.front, row.rear].filter(Boolean);
+  const notes = [...new Set(items.map((s) => s.note).filter(Boolean))];
+  if (notes.length === 1) parts.push(notes[0]);
+  else items.forEach((s) => s.note && parts.push(`${s.axle || s.label}: ${s.note}`));
+  return U.minus(parts.join("\n\n"));
+}
+
+function valueCell(s, extraClass) {
+  if (!s) return h("td", { class: ["base-v", "base-v--none", extraClass] }, h("span", { class: "sr-only" }, "Not set"));
+  const d = decimalsFor(s);
+  if (s.value !== null && s.value !== undefined) {
+    const range = Array.isArray(s.range) ? `${num(s.range[0], d)} … ${num(s.range[1], d)}` : "";
+    return h("td", { class: ["base-v", extraClass] },
+      h("span", { class: "base-v__main num" }, withUnit(s.value, s.unit, d)),
+      range ? h("span", { class: "base-v__range num" }, h("span", { class: "sr-only" }, "range "), range) : null);
+  }
+  const rel = parseRelative(s.relative);
+  if (rel) {
+    return h("td", { class: ["base-v", "base-v--rel", extraClass], "data-tip": U.minus(s.relative) },
+      h("span", { class: "base-v__main num" }, `${Math.round(rel.pct)}%`, h("span", { class: "sr-only" }, ` of slider${rel.lo !== null ? `, range ${rel.lo} to ${rel.hi}%` : ""}`)),
+      h("span", { class: "base-slider", "aria-hidden": "true" },
+        rel.lo !== null ? h("i", { class: "base-slider__band", style: { left: `${rel.lo}%`, width: `${Math.max(1, rel.hi - rel.lo)}%` } }) : null,
+        h("i", { class: "base-slider__mark", style: { left: `${rel.pct}%` } })));
+  }
+  if (s.relative) {
+    return h("td", { class: ["base-v", "base-v--text", extraClass], "data-tip": U.minus(s.relative) }, h("span", { class: "base-v__main" }, U.minus(s.relative)));
+  }
+  if (s.note && DEFAULT_NOTE.test(s.note)) {
+    return h("td", { class: ["base-v", "base-v--default", extraClass] }, h("span", { class: "base-v__main" }, "Default"));
+  }
+  return h("td", { class: ["base-v", "base-v--rule", extraClass] }, h("span", { class: "base-v__main" }, "–"), h("span", { class: "sr-only" }, "see note"));
+}
+
 function sheet(baseline) {
-  return h("div", { class: "base-sheet" }, sections(baseline.settings).map((sec) => {
-    let lastLabel = null;
-    // One precision per unit within a section, so Front and Rear columns line up.
-    const dec = new Map();
-    for (const r of sec.rows) dec.set(r.unit, Math.max(dec.get(r.unit) ?? 0, rowDecimals(r)));
+  return h("div", { class: "base-sheet" }, sectionsOf(baseline.settings).map((sec) => {
+    const hasAxles = sec.rows.some((r) => r.front || r.rear);
     return h("section", { class: "base-sec" },
-      h("h2", { class: "base-sec__title" }, sec.name),
       h("table", { class: "base-table" },
-        h("thead", { class: "sr-only" }, h("tr", null,
-          h("th", { scope: "col" }, "Setting"), h("th", { scope: "col" }, "Axle"), h("th", { scope: "col" }, "Value"),
-          h("th", { scope: "col" }, "Range"), h("th", { scope: "col" }, "Note"))),
-        h("tbody", null, sec.rows.map((r) => {
-          const label = r.label === sec.name ? "" : r.label;
-          const showLabel = label !== lastLabel;
-          lastLabel = label;
-          const hasValue = r.value !== null && r.value !== undefined;
-          const d = dec.get(r.unit);
-          return h("tr", { class: ["base-row", showLabel && "is-first"], dataset: { key: r.key } },
-            h("th", { scope: "row", class: "base-row__label" }, showLabel ? label : h("span", { class: "sr-only" }, label)),
-            h("td", { class: "base-row__axle" }, r.axle || ""),
-            hasValue
-              ? h("td", { class: "base-row__value num" }, withUnit(r.value, r.unit, d))
-              : h("td", { class: "base-row__value base-row__value--rel" }, r.relative ? U.minus(r.relative) : "–"),
-            hasValue
-              ? h("td", { class: "base-row__range num", title: r.range ? "Range" : null }, rangeText(r.range, d))
-              : h("td", { class: "base-row__range" }, sliderPct(r.relative) !== null ? sliderTrack(sliderPct(r.relative)) : ""),
-            noteCell(r.note));
+        h("thead", null, h("tr", null,
+          h("th", { scope: "col", class: "base-sec__title" }, sec.name),
+          hasAxles ? h("th", { scope: "col", class: "base-sec__axle" }, "Front") : h("th", { scope: "col", class: "base-sec__axle" }, h("span", { class: "sr-only" }, "Value")),
+          hasAxles ? h("th", { scope: "col", class: "base-sec__axle" }, "Rear") : h("td", { class: "base-sec__axle" }))),
+        h("tbody", null, sec.rows.map((row) => {
+          const tip = rowTip(row);
+          const label = row.label;
+          return h("tr", { class: "base-row" },
+            h("th", { scope: "row", class: "base-row__label" },
+              label ? h("span", { class: "base-row__name" }, label) : h("span", { class: "sr-only" }, row.label),
+              tip ? h("button", { class: "base-info", type: "button", "data-tip": tip, "aria-label": `Note: ${tip}` }, "i") : null),
+            row.single ? spanCell(valueCell(row.single, "base-v--span")) : null,
+            row.single ? null : valueCell(row.front),
+            row.single ? null : valueCell(row.rear));
         }))));
   }));
 }
+
+/** Axle-less settings (Final Drive, Braking Balance) take both value columns. */
+function spanCell(td) {
+  td.colSpan = 2;
+  return td;
+}
+
+// --------------------------------------------------------------- tooltip
+
+/** One floating tooltip for every [data-tip] in the view: hover, focus or tap. */
+function createTips(root) {
+  const tip = h("div", { class: "base-tip", role: "tooltip", hidden: true });
+  document.body.append(tip);
+  let owner = null;
+  function show(el) {
+    owner = el;
+    tip.textContent = el.dataset.tip;
+    tip.hidden = false;
+    const r = el.getBoundingClientRect();
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
+    const left = Math.min(window.innerWidth - tw - 8, Math.max(8, r.left - 10));
+    let top = r.bottom + 8;
+    if (top + th > window.innerHeight - 8) top = Math.max(8, r.top - th - 8);
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+  }
+  function hide() {
+    owner = null;
+    tip.hidden = true;
+  }
+  const over = (e) => { const el = e.target.closest?.("[data-tip]"); if (el && root.contains(el)) show(el); };
+  const out = (e) => { const el = e.target.closest?.("[data-tip]"); if (el && el === owner && !el.contains(e.relatedTarget)) hide(); };
+  const click = (e) => { const el = e.target.closest?.(".base-info"); if (!el) return; if (owner === el) hide(); else show(el); };
+  const key = (e) => { if (e.key === "Escape") hide(); };
+  root.addEventListener("mouseover", over);
+  root.addEventListener("mouseout", out);
+  root.addEventListener("focusin", over);
+  root.addEventListener("focusout", hide);
+  root.addEventListener("click", click);
+  document.addEventListener("keydown", key);
+  window.addEventListener("scroll", hide, true);
+  return () => {
+    root.removeEventListener("mouseover", over);
+    root.removeEventListener("mouseout", out);
+    root.removeEventListener("focusin", over);
+    root.removeEventListener("focusout", hide);
+    root.removeEventListener("click", click);
+    document.removeEventListener("keydown", key);
+    window.removeEventListener("scroll", hide, true);
+    tip.remove();
+  };
+}
+
+// ------------------------------------------------------------------- view
 
 export function mount(main, ctx, route) {
   const { api } = ctx;
@@ -120,15 +201,17 @@ export function mount(main, ctx, route) {
     location.hash = select.value ? `#/baseline?category=${encodeURIComponent(select.value)}` : "#/baseline";
   });
   const facts = h("dl", { class: "base-facts" });
-  const notes = h("div", { class: "base-notes" });
+  const sources = h("div", { class: "base-notes" });
   const body = h("div", { class: "base-main" }, h("span", { class: "skeleton", style: { height: "20rem" } }));
-  const title = h("span", { class: "base-kicker" }, "Starting point");
+  const kicker = h("span", { class: "base-kicker" }, "Starting point");
 
-  main.append(h("div", { class: "view base-view" },
+  const view = h("div", { class: "view base-view" },
     h("div", { class: "view__top" },
-      h("div", { class: "view__title" }, h("h1", null, "Baseline"), title),
+      h("div", { class: "view__title" }, h("h1", null, "Baseline"), kicker),
       h("div", { class: "inline-field" }, h("label", { class: "label", for: "base-cat" }, "Category"), select)),
-    h("div", { class: "base-grid" }, body, h("aside", { class: "base-side", "aria-label": "Match and sources" }, facts, notes))));
+    h("div", { class: "base-grid" }, body, h("aside", { class: "base-side", "aria-label": "Match and sources" }, facts, sources)));
+  main.append(view);
+  const destroyTips = createTips(view);
 
   function renderSelect(matchId) {
     clear(select).append(
@@ -149,15 +232,22 @@ export function mount(main, ctx, route) {
       fact("Category", baseline ? baseline.category.name : "–"),
       pick ? fact("Match", "Manual") : match ? fact("Match", `${HOW[match.how] || match.how} · ${LEVEL[match.confidence] || match.confidence}`) : null,
       baseline ? fact("Confidence", LEVEL[baseline.confidence] || baseline.confidence) : null,
+      baseline?.drivetrain ? fact("Drivetrain", baseline.drivetrain) : null,
       baseline ? fact("Units", baseline.unit_system === "metric" ? "Metric" : "Imperial") : null);
-    clear(notes);
-    if (!baseline) return;
-    if (baseline.notes?.length) notes.append(h("ul", { class: "base-notes__list" }, baseline.notes.map((n) => h("li", null, U.minus(n)))));
-    if (baseline.sources?.length) {
-      notes.append(h("details", { class: "base-sources" },
+    // Category notes go behind the "Starting point" label; the sheet stays numbers only.
+    if (baseline?.notes?.length) {
+      kicker.dataset.tip = U.minus(baseline.notes.join("\n\n"));
+      kicker.tabIndex = 0;
+    } else {
+      delete kicker.dataset.tip;
+      kicker.removeAttribute("tabindex");
+    }
+    clear(sources);
+    if (baseline?.sources?.length) {
+      sources.append(h("details", { class: "base-sources" },
         h("summary", null, "Sources ", h("span", { class: "muted num" }, `(${baseline.sources.length})`)),
         h("ul", null, baseline.sources.map((s) => h("li", null,
-          s.url ? h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, s.title || s.url) : s.title)))));
+          s.url ? h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer", title: s.used_for || null }, s.title || s.url) : s.title)))));
     }
   }
 
@@ -213,6 +303,7 @@ export function mount(main, ctx, route) {
   return () => {
     alive = false;
     off();
+    destroyTips();
   };
 }
 

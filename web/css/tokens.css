@@ -124,7 +124,7 @@
 @media (min-width: 1800px) {
   :root { font-size: 112.5%; }
 }
-@media (min-width: 2300px) {
+@media (min-width: 2300px) and (min-height: 1050px) {
   :root { font-size: 125%; }
 }
 @media (min-width: 2300px) and (min-height: 1250px) {

@@ -639,7 +639,7 @@ export function createMockBackend() {
     if (p === "/baseline" && method === "GET") {
       if (!status().car) return ok({ match: null, baseline: null });
       const car = { ordinal: CAR.ordinal, name: CAR.name, division: CAR.division };
-      return ok({ match: { category_id: "lmp2", how: "ordinal", confidence: "high", car }, baseline: baselineFor("lmp2") });
+      return ok({ match: { category_id: "lmp2", how: "division", confidence: "high", car }, baseline: baselineFor("lmp2") });
     }
     if ((m = p.match(/^\/baseline\/([a-z0-9_-]+)$/)) && method === "GET") {
       const b = baselineFor(m[1]);
