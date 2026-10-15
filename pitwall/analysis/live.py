@@ -35,6 +35,8 @@ STRAIGHTS_KEPT = 6  # straights considered for the gearing item
 TIRE_CHUNK_S = 1.0
 TIRE_WINDOW_MIN_S = 60.0  # tire temperatures average at least this much recent driving
 _MAX_FORWARD_GEAR = 10
+MAX_KEPT_EVENTS = 200  # bounds memory if no corner ever completes (e.g. a skidpad)
+MAX_TIRE_CHUNKS = 3600
 
 
 class LiveAnalyzer:
@@ -62,8 +64,8 @@ class LiveAnalyzer:
         self._corners: deque[CornerRecord] = deque(maxlen=self.window_corners)
         self._brakes: deque[BrakeRecord] = deque(maxlen=self.window_corners)
         self._straights: deque[StraightRecord] = deque(maxlen=STRAIGHTS_KEPT)
-        self._bottoming: deque[BottomingEvent] = deque()
-        self._tire_chunks: deque[tuple[float, float, float, float, float, float]] = deque()
+        self._bottoming: deque[BottomingEvent] = deque(maxlen=MAX_KEPT_EVENTS)
+        self._tire_chunks: deque[tuple[float, ...]] = deque(maxlen=MAX_TIRE_CHUNKS)
         self._chunk = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # 4 temp sums (°F), n, seconds
         self._top_gear = 0
         self._corners_seen = 0

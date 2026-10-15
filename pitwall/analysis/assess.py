@@ -222,9 +222,7 @@ def _balance(
 
 
 # --- Event-rate items -------------------------------------------------------------------------
-def _rate(
-    item: str, events: int, total: int, unit: str, *, target: str
-) -> tuple[float, float, str]:
+def _rate(item: str, events: int, total: int, unit: str) -> tuple[float, float, str]:
     rate = events / total if total else 0.0
     score = band_score(rate, BANDS[item])
     if events < MIN_EVENTS_FOR_WARN:
@@ -242,7 +240,7 @@ def _wheelspin(ev: Evidence) -> Assessment:
     cs = [c for c in ev.corners if not c.partial]
     n = len(cs)
     spins = [c for c in cs if c.spin_axle]
-    rate, score, text = _rate(item, len(spins), n, "exits", target=target)
+    rate, score, text = _rate(item, len(spins), n, "exits")
     driven = DRIVEN_AXLES.get(ev.drivetrain, ("rear",))
     axle = Counter(c.spin_axle for c in spins).most_common(1)[0][0] if spins else driven[-1]
     evidence = (
@@ -271,7 +269,7 @@ def _lockups(ev: Evidence, axle: str) -> Assessment:
     bs = [b for b in ev.brakes if not b.partial]
     n = len(bs)
     locked = [b for b in bs if (b.locked_front if axle == "front" else b.locked_rear)]
-    rate, score, text = _rate(item, len(locked), n, "stops", target=target)
+    rate, score, text = _rate(item, len(locked), n, "stops")
     other = "rear" if axle == "front" else "front"
     other_locked = sum(1 for b in bs if (b.locked_rear if axle == "front" else b.locked_front))
     other_score = band_score(other_locked / n, BANDS[f"lockups_{other}"]) if n else -1.0
@@ -308,7 +306,7 @@ def _stability(ev: Evidence) -> Assessment:
     bs = [b for b in ev.brakes if not b.partial]
     n = len(bs)
     bad = [b for b in bs if b.unstable]
-    rate, score, text = _rate(item, len(bad), n, "stops", target=target)
+    rate, score, text = _rate(item, len(bad), n, "stops")
     evidence = (
         f"Rear slides (rear slip angle above the front) while braking in a straight line in "
         f"{len(bad)} of {_plural(n, 'braking zone')}"

@@ -240,11 +240,13 @@ def _verdict(
 
     lap_better = delta is not None and delta <= -noise
     lap_worse = delta is not None and delta >= noise
-    if (lap_better or improved) and not lap_worse and not new and not worsened:
+    gain = lap_better or improved
+    loss = lap_worse or worsened or bool(new)
+    if gain and not loss:
         result = "helped"
-    elif (lap_better and (new or worsened)) or (improved and lap_worse):
+    elif gain and loss:
         result = "mixed"
-    elif lap_worse or worsened or new:
+    elif loss:
         result = "hurt"
     else:
         result = "no-clear-effect"

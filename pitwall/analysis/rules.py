@@ -429,11 +429,6 @@ def _unit_suffix(unit: str) -> str:
     return f" {unit}"
 
 
-def format_number(value: float, decimals: int) -> str:
-    text = f"{abs(value):.{decimals}f}"
-    return f"{MINUS}{text}" if value < 0 else text
-
-
 def format_value(value: float | None) -> str:
     if value is None:
         return "?"

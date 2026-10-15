@@ -318,11 +318,12 @@ With a `previous_session`:
 - The target findings of a change are the ones whose rules use that setting in
   that direction, plus the finding the previous session's `next_change`
   addressed if it used the same setting.
-- `result`: `helped` (faster beyond noise, or a target finding down by ≥ 25 %,
-  without getting slower and without new issues), `mixed`, `hurt` (slower, or
-  a new issue with severity ≥ 0.3, without a compensating gain),
-  `no-clear-effect`, or `no-change-recorded` when `tune_changes` is empty (lap
-  times are still compared).
+- `result`: a *gain* is a median lap faster beyond noise or a target finding
+  down by ≥ 25 %; a *loss* is a lap slower beyond noise, a target finding up by
+  as much, or a new finding with severity ≥ 0.3. Gain only → `helped`, both →
+  `mixed`, loss only → `hurt`, neither → `no-clear-effect`. With an empty
+  `tune_changes` the result is `no-change-recorded` (lap times are still
+  compared).
 - `changes`: `[{setting, from, to}]`; the text names each in menu terms
   (`Anti-roll Bars → Front: 20 → 18`). With several changes at once it says the
   effect can't be attributed to one of them.
