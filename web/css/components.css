@@ -1,0 +1,280 @@
+/* Components: buttons, flags, status plates, gauges, tables, forms. */
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.55em;
+  min-height: 2.5rem;
+  padding: 0.45em 0.95em;
+  border: 1px solid var(--rule-strong);
+  border-radius: 0;
+  background: var(--tarmac-2);
+  color: var(--ink);
+  font-size: var(--t-md); font-weight: 600; line-height: 1.1;
+  text-decoration: none; white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.btn svg { width: 1.15em; height: 1.15em; flex: none; }
+.btn:hover { background: var(--tarmac-3); border-color: var(--ink-3); }
+.btn:active { background: var(--tarmac-1); transform: translateY(1px); }
+.btn:disabled, .btn[aria-disabled="true"] {
+  cursor: not-allowed; color: var(--ink-3);
+  background: transparent; border-style: dashed; transform: none;
+}
+.btn[aria-busy="true"] { cursor: progress; }
+
+.btn--primary { background: var(--orange); border-color: var(--orange); color: var(--ink-on-orange); }
+.btn--primary:hover { background: var(--orange-hover); border-color: var(--orange-hover); }
+.btn--primary:active { background: var(--orange-press); border-color: var(--orange-press); }
+.btn--primary:disabled { background: transparent; border-color: var(--orange-press); color: var(--ink-3); }
+
+.btn--rec .dot { width: 0.8em; height: 0.8em; border-radius: 50%; background: var(--flag-red); box-shadow: 0 0 0 2px var(--ink-on-orange); }
+.btn--stop { background: var(--rec-ink); border-color: var(--rec-ink); color: var(--rec-deep); }
+.btn--stop:hover { background: oklch(0.92 0.03 30); border-color: oklch(0.92 0.03 30); }
+.btn--stop .sq { width: 0.75em; height: 0.75em; background: currentColor; }
+
+.btn--quiet { background: transparent; border-color: transparent; color: var(--ink-2); padding-inline: 0.5em; }
+.btn--quiet:hover { background: var(--tarmac-2); border-color: transparent; color: var(--ink); }
+.btn--danger { border-color: var(--flag-red); color: var(--flag-red); background: transparent; }
+.btn--danger:hover { background: var(--flag-red); color: var(--flag-black); border-color: var(--flag-red); }
+.btn--sm { min-height: 2.25rem; font-size: var(--t-base); padding: 0.35em 0.8em; }
+
+.link-quiet {
+  display: inline-flex; align-items: center; gap: 0.35em;
+  color: var(--ink-2); font-weight: 500;
+  text-decoration: underline; text-decoration-color: var(--rule-strong);
+}
+.link-quiet:hover { color: var(--ink); text-decoration-color: var(--orange); }
+.link-quiet svg { width: 1em; height: 1em; }
+
+/* ------------------------------------------------------------------ flags
+   State is flown as flag cloth: a square-cornered 3:2 swatch whose pattern
+   carries meaning beside a word. Never shown without its word. */
+
+.flag {
+  display: inline-block; flex: none;
+  inline-size: 1.5em; block-size: 1em;
+  vertical-align: -0.12em;
+  box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.35), 0 0 0 1px oklch(1 0 0 / 0.08);
+  background: var(--tarmac-3);
+}
+.flag--green { background: var(--flag-green); }
+.flag--yellow { background: var(--flag-yellow); }
+.flag--red { background: var(--flag-red); }
+.flag--blue { background: var(--flag-blue); }
+.flag--white { background: var(--flag-white); }
+.flag--chequered {
+  background:
+    repeating-conic-gradient(var(--flag-black) 0 25%, var(--flag-white) 0 50%)
+    0 0 / 0.5em 0.5em;
+}
+.flag--warning { background: linear-gradient(to top left, var(--flag-black) 50%, var(--flag-white) calc(50% + 0.5px)); }
+.flag--meatball {
+  background: radial-gradient(circle closest-side, var(--orange) 0 62%, var(--flag-black) calc(62% + 0.5px));
+}
+.flag--slippery {
+  background: repeating-linear-gradient(90deg, var(--flag-yellow) 0 0.1875em, var(--flag-red) 0.1875em 0.375em);
+}
+.flag--none { background: transparent; box-shadow: inset 0 0 0 2px var(--ink-3); }
+
+.flag.is-new { animation: unfurl var(--dur-unfurl) var(--ease-out); }
+@keyframes unfurl { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+
+.signal { display: inline-flex; align-items: center; gap: 0.5em; font-weight: 600; }
+.signal--quiet { font-weight: 500; color: var(--ink-2); }
+
+/* ---------------------------------------------------------- status plates
+   The board's status: colour plus the word. Collecting is a hollow plate. */
+
+.plate {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-inline-size: 6.5rem; block-size: 2.6rem;
+  padding-inline: 0.75rem;
+  font-size: var(--t-lg); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--flag-black);
+  background: var(--tarmac-3);
+  line-height: 1;
+}
+.plate--ok { background: var(--flag-green); }
+.plate--warn { background: var(--flag-yellow); }
+.plate--bad { background: var(--flag-red); }
+.plate--collecting {
+  background: transparent; color: var(--ink-2);
+  box-shadow: inset 0 0 0 2px var(--ink-3);
+  font-size: var(--t-md); letter-spacing: 0.02em; text-transform: none; font-weight: 600;
+  background-image: repeating-linear-gradient(-45deg, transparent 0 6px, oklch(1 0 0 / 0.05) 6px 12px);
+}
+.plate.is-changed { animation: unfurl var(--dur-unfurl) var(--ease-out); }
+
+/* ------------------------------------------------------- band gauge
+   Value against its target band: the band is a hatched slot, the value a bar. */
+
+.gauge {
+  position: relative;
+  block-size: 0.9rem;
+  background: var(--tarmac-0);
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+.gauge__band {
+  position: absolute; top: 0; bottom: 0;
+  background: repeating-linear-gradient(-45deg, oklch(1 0 0 / 0.20) 0 3px, transparent 3px 7px);
+  box-shadow: inset 1px 0 0 var(--ink-3), inset -1px 0 0 var(--ink-3);
+}
+.gauge__zero { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--rule-strong); }
+.gauge__value {
+  position: absolute; top: -0.3rem; bottom: -0.3rem; width: 0.4rem; margin-left: -0.2rem;
+  background: var(--ink);
+  box-shadow: 0 0 0 2px var(--tarmac-1);
+  transition: left 400ms var(--ease-out);
+}
+.gauge--ok .gauge__value { background: var(--flag-green); }
+.gauge--warn .gauge__value { background: var(--flag-yellow); }
+.gauge--bad .gauge__value { background: var(--flag-red); }
+.gauge--collecting .gauge__value { background: var(--ink-3); width: 0.25rem; }
+.gauge__edge {
+  position: absolute; top: 50%; translate: 0 -50%;
+  font-size: var(--t-xs); color: var(--ink-3); font-weight: 600;
+}
+
+/* ------------------------------------------------------------ meter (segments) */
+
+.segments { display: inline-flex; gap: 2px; vertical-align: middle; }
+.segments i { display: block; width: 0.55rem; height: 0.9rem; background: var(--tarmac-3); }
+.segments i.on { background: var(--orange); }
+
+/* ------------------------------------------------------------------ panels */
+
+.panel { background: var(--tarmac-1); border: 1px solid var(--rule); }
+.panel__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4);
+  padding: var(--s-4) var(--s-5) var(--s-3);
+}
+.panel__title { font-size: var(--t-lg); font-weight: 600; }
+.panel__body { padding: 0 var(--s-5) var(--s-5); }
+
+.page-head {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+  gap: var(--s-3) var(--s-5);
+  margin-bottom: var(--s-5);
+}
+.page-head h1 { font-size: var(--t-2xl); font-weight: 600; }
+.page-head .sub { color: var(--ink-2); font-size: var(--t-md); margin-top: var(--s-1); }
+.crumbs { display: flex; gap: var(--s-2); color: var(--ink-3); font-size: var(--t-sm); margin-bottom: 0.1rem; }
+.crumbs a { color: var(--ink-2); }
+
+.section-title { font-size: var(--t-xl); font-weight: 600; margin-bottom: var(--s-4); }
+.section-title .count { color: var(--ink-3); font-weight: 500; }
+
+/* ------------------------------------------------------------------ tables */
+
+.table { width: 100%; font-variant-numeric: tabular-nums lining-nums; font-size: var(--t-base); }
+.table th {
+  text-align: left; font-weight: 500; color: var(--ink-3); font-size: var(--t-sm);
+  padding: var(--s-1) var(--s-3); border-bottom: 1px solid var(--rule-strong);
+  white-space: nowrap;
+}
+.table td { padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--rule); vertical-align: middle; }
+.table .r { text-align: right; }
+.table tbody tr { transition: background-color var(--dur) var(--ease-out); }
+.table tbody tr.is-link { cursor: pointer; }
+.table tbody tr.is-link:hover { background: var(--tarmac-1); }
+.table tbody tr.is-best td { background: oklch(0.25 0.03 150 / 0.35); }
+.table a.row-link { color: var(--ink); font-weight: 600; text-decoration: none; }
+.table a.row-link:hover { text-decoration: underline; text-decoration-color: var(--orange); }
+.th-sort {
+  all: unset; cursor: pointer; display: inline-flex; gap: 0.3em; align-items: center;
+  color: inherit; font: inherit;
+}
+.th-sort:hover { color: var(--ink); }
+.th-sort:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.th-sort svg { width: 0.9em; height: 0.9em; }
+[aria-sort="none"] .th-sort svg { opacity: 0.35; }
+
+.table-wrap { overflow-x: auto; }
+
+/* ------------------------------------------------------------------ forms */
+
+.field { display: grid; gap: var(--s-1); }
+.field { gap: 0.15rem; }
+.field > span, .label { color: var(--ink-2); font-size: var(--t-sm); font-weight: 500; }
+.input, .select, .textarea {
+  min-height: 2.5rem;
+  padding: 0.35em 0.65em;
+  background: var(--tarmac-0);
+  border: 1px solid var(--rule-strong);
+  border-radius: 0;
+  color: var(--ink);
+  font-size: var(--t-base);
+  font-variant-numeric: tabular-nums;
+  transition: border-color var(--dur) var(--ease-out), background-color var(--dur) var(--ease-out);
+}
+.input:hover, .select:hover, .textarea:hover { border-color: var(--ink-3); }
+.input:focus-visible, .select:focus-visible, .textarea:focus-visible { outline: 3px solid var(--focus); outline-offset: 0; border-color: var(--ink); }
+.input::placeholder, .textarea::placeholder { color: var(--ink-3); opacity: 1; }
+.input[aria-invalid="true"] { border-color: var(--flag-red); box-shadow: inset 0 -3px 0 var(--flag-red); }
+.input:disabled { border-style: dashed; color: var(--ink-3); }
+.select { padding-right: 2rem; appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--ink-2) 50%), linear-gradient(-45deg, transparent 50%, var(--ink-2) 50%); background-position: right 0.95rem center, right 0.6rem center; background-size: 0.35rem 0.35rem; background-repeat: no-repeat; }
+.textarea { min-height: 5rem; resize: vertical; line-height: 1.4; }
+.error-text { color: var(--flag-red); font-weight: 600; font-size: var(--t-base); }
+
+/* Segmented radio group */
+.segmented { display: inline-flex; border: 1px solid var(--rule-strong); }
+.segmented label { position: relative; }
+.segmented input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.segmented span {
+  display: inline-flex; align-items: center; min-height: 2.5rem; padding: 0 0.9rem;
+  font-weight: 600; font-size: var(--t-base); color: var(--ink-2);
+  border-right: 1px solid var(--rule-strong);
+  transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.segmented label:last-child span { border-right: 0; }
+.segmented label:hover span { background: var(--tarmac-2); color: var(--ink); }
+.segmented input:checked + span { background: var(--ink); color: var(--flag-black); }
+.segmented input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; position: relative; z-index: 1; }
+
+/* Switch */
+.switch { display: inline-flex; align-items: center; gap: var(--s-3); cursor: pointer; font-weight: 600; font-size: var(--t-md); }
+.switch input { appearance: none; margin: 0; width: 3.25rem; height: 1.75rem; flex: none; position: relative; cursor: pointer;
+  background: var(--tarmac-0); border: 1px solid var(--rule-strong); transition: background-color var(--dur) var(--ease-out); }
+.switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: calc(1.75rem - 8px); height: calc(1.75rem - 8px);
+  background: var(--ink-3); transition: transform var(--dur) var(--ease-out), background-color var(--dur) var(--ease-out); }
+.switch input:checked { background: var(--orange); border-color: var(--orange); }
+.switch input:checked::after { transform: translateX(1.5rem); background: var(--ink-on-orange); }
+.switch input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.switch .state { color: var(--ink-3); font-weight: 500; min-inline-size: 2.2em; }
+
+/* -------------------------------------------------- empty, loading, errors */
+
+.empty {
+  display: grid; gap: var(--s-3); justify-items: start;
+  padding: var(--s-6) var(--s-5);
+  border: 1px dashed var(--rule-strong);
+  color: var(--ink-2); font-size: var(--t-md);
+  max-width: 60rem;
+}
+.empty h2 { color: var(--ink); font-size: var(--t-xl); }
+
+.notice {
+  display: flex; align-items: flex-start; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--rule-strong);
+  background: var(--tarmac-1);
+  font-size: var(--t-md);
+}
+.notice .flag { margin-top: 0.2em; }
+.notice--error { border-color: var(--flag-red); }
+.notice--warn { border-color: var(--flag-yellow); }
+
+.skeleton {
+  display: block; background: linear-gradient(90deg, var(--tarmac-1), var(--tarmac-2), var(--tarmac-1));
+  background-size: 200% 100%; animation: shimmer 1.4s linear infinite; min-height: 1em;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: var(--s-2) var(--s-4); font-size: var(--t-md); }
+.kv dt { color: var(--ink-3); }
+.kv dd { font-variant-numeric: tabular-nums; }
+
+.icon { width: 1.1em; height: 1.1em; flex: none; }

@@ -1,0 +1,132 @@
+/* Pitwall design tokens.
+   World: a marshal post at the side of a track. Tarmac ground, flag-white ink,
+   marshal orange for the shell and primary actions, flag cloth colours for state. */
+
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/barlow-semi-condensed-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/barlow-semi-condensed-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../fonts/barlow-semi-condensed-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/barlow-semi-condensed-700.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Tarmac: the ground and its lifted layers. Cool blue-grey, flat, no glow. */
+  --tarmac-0: oklch(0.165 0.008 250);
+  --tarmac-1: oklch(0.205 0.009 250);
+  --tarmac-2: oklch(0.245 0.010 250);
+  --tarmac-3: oklch(0.295 0.011 250);
+  --rule: oklch(0.335 0.010 250);
+  --rule-strong: oklch(0.46 0.012 250);
+
+  /* Ink */
+  --ink: oklch(0.965 0.006 95);
+  --ink-2: oklch(0.84 0.008 250);
+  --ink-3: oklch(0.71 0.010 250);
+  --ink-on-orange: oklch(0.16 0.01 50);
+
+  /* Marshal orange: the shell, primary actions, the next change. */
+  --orange: oklch(0.71 0.185 47);
+  --orange-hover: oklch(0.76 0.17 50);
+  --orange-press: oklch(0.64 0.18 44);
+  --orange-ink: oklch(0.78 0.16 52); /* orange used as text on tarmac */
+
+  /* Flag cloth. Used only where a state is being signalled. */
+  --flag-green: oklch(0.76 0.17 150);
+  --flag-yellow: oklch(0.89 0.175 98);
+  --flag-red: oklch(0.64 0.215 27);
+  --flag-blue: oklch(0.72 0.13 240);
+  --flag-white: oklch(0.97 0.004 95);
+  --flag-black: oklch(0.13 0.004 250);
+
+  /* Recording band */
+  --rec: oklch(0.52 0.195 27);
+  --rec-deep: oklch(0.42 0.17 27);
+  --rec-ink: oklch(0.985 0.01 30);
+
+  /* Handling */
+  --under: var(--flag-blue);
+  --over: var(--flag-red);
+  --cold: var(--flag-blue);
+  --window: var(--flag-green);
+  --hot: var(--flag-red);
+  --faster: var(--flag-green);
+  --slower: var(--flag-red);
+
+  /* Data series */
+  --series-throttle: var(--flag-green);
+  --series-brake: var(--flag-red);
+  --series-steer: var(--ink);
+  --series-a: var(--ink);
+  --series-b: var(--orange-ink);
+  --series-front: var(--flag-blue);
+  --series-rear: var(--flag-red);
+
+  --focus: var(--flag-yellow);
+
+  /* Type */
+  --font: "Barlow Semi Condensed", "Arial Narrow", "Helvetica Neue", system-ui, sans-serif;
+  --font-symbols: system-ui, "Segoe UI Symbol", "Apple Symbols", sans-serif;
+  --t-xs: 0.8125rem;
+  --t-sm: 0.875rem;
+  --t-base: 1rem;
+  --t-md: 1.125rem;
+  --t-lg: 1.375rem;
+  --t-xl: 1.75rem;
+  --t-2xl: 2.25rem;
+  --t-3xl: 3rem;
+  --t-4xl: 4rem;
+  --t-display: 6rem;
+
+  /* Space: 4px base, in rem so it scales with the root step */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+  --s-8: 4rem;
+
+  --rail-w: 4.75rem;
+  --strip-h: 3.25rem;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur: 200ms;
+  --dur-unfurl: 320ms;
+}
+
+/* Fixed rem steps, not fluid type: the root grows with the monitor so the
+   Live screen stays readable from a metre on a 1440p panel. */
+@media (min-width: 1800px) {
+  :root { font-size: 112.5%; }
+}
+@media (min-width: 2300px) {
+  :root { font-size: 125%; }
+}
+@media (min-width: 2300px) and (min-height: 1250px) {
+  :root { font-size: 137.5%; }
+}
