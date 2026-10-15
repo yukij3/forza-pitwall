@@ -111,6 +111,7 @@ export function mount(main, ctx) {
   let rows = new Map();
   let idsKey = "";
   let lastFocus = null;
+  const vacant = h("li", { class: "item item--vacant", "aria-hidden": "true" });
 
   function buildRow(item) {
     const plate = h("span", { class: "plate" });
@@ -211,14 +212,29 @@ export function mount(main, ctx) {
       idsKey = key;
       lastFocus = undefined;
     }
+    const half = Math.max(1, Math.ceil(la.items.length / 2));
     const focusId = la.focus && rows.has(la.focus) ? la.focus : null;
     for (const item of la.items) patchRow(rows.get(item.id), item, item.id === focusId);
-    // The focus item leads the board: first, full width, larger. Others keep server order.
+    // Every item owns a fixed cell (server order, down the left column, then
+    // the right). The focus item is lifted into the full-width lead row; its
+    // own cell stays empty so no other row moves. DOM order puts the lead
+    // first for screen readers and narrow layouts.
     if (focusId !== lastFocus) {
+      const lead = focusId ? 1 : 0;
+      la.items.forEach((item, i) => {
+        const el = rows.get(item.id).el;
+        el.style.setProperty("--col", String(i < half ? 1 : 2));
+        el.style.setProperty("--row", String((i % half) + 1 + lead));
+      });
       const ordered = focusId ? [focusId, ...la.items.map((i) => i.id).filter((id) => id !== focusId)] : la.items.map((i) => i.id);
       ordered.forEach((id) => list.append(rows.get(id).el));
-      const rest = la.items.length - (focusId ? 1 : 0);
-      list.style.setProperty("--rows", String(Math.max(1, Math.ceil(rest / 2))));
+      if (focusId) {
+        const fi = la.items.findIndex((i) => i.id === focusId);
+        vacant.style.setProperty("--col", String(fi < half ? 1 : 2));
+        vacant.style.setProperty("--row", String((fi % half) + 2));
+        list.append(vacant);
+      } else vacant.remove();
+      list.style.setProperty("--rows", String(half));
       list.classList.toggle("has-focus", !!focusId);
       if (focusId && lastFocus !== undefined) replay(rows.get(focusId).el, "is-arrived");
       lastFocus = focusId;
@@ -238,16 +254,19 @@ export function mount(main, ctx) {
 
   function renderState(la, focusId) {
     if (!la) {
+      stateEl.classList.remove("sr-only");
       stateFlag.className = "flag flag--none";
       setText(stateText, "Connecting");
       return;
     }
     if (focusId) {
+      // The lead row already says it; the head only announces it to screen readers.
       const item = la.items.find((i) => i.id === focusId);
-      stateFlag.className = `flag flag--${item.status === "bad" ? "red" : "yellow"}`;
-      setText(stateText, `Next: ${item.title}`);
+      stateEl.classList.add("sr-only");
+      setText(stateText, `Change first: ${item.title}`);
       return;
     }
+    stateEl.classList.remove("sr-only");
     const collecting = la.items.length && la.items.every((i) => i.status === "collecting");
     stateFlag.className = `flag flag--${collecting ? "none" : "green"}`;
     setText(stateText, collecting ? "Collecting" : "All OK");

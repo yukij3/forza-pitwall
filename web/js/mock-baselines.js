@@ -46,7 +46,7 @@ const DATA = {
     values: {
       "tires.pressure_front": V(27.5, [26.5, 28.5], "Hot ≈ 33 psi"),
       "tires.pressure_rear": V(27.0, [26.0, 28.0], "Hot ≈ 33 psi"),
-      "gearing.final_drive": R("≈ 40% of slider", "Top gear ends at the braking board"),
+      "gearing.final_drive": R("≈ 40% of slider", "Top gear: no limiter"),
       "alignment.camber_front": V(-2.8, [-3.2, -2.4]),
       "alignment.camber_rear": V(-1.8, [-2.2, -1.4]),
       "alignment.toe_front": V(0.0, [-0.1, 0.1]),
@@ -69,7 +69,7 @@ const DATA = {
       "diff.accel_rear": V(45, [35, 55]),
       "diff.decel_rear": V(20, [10, 30]),
     },
-    notes: ["Demo values for the mock."],
+    notes: ["Demo values"],
     sources: [{ title: "Demo source A", url: "https://example.org/pitwall-demo/lmp2" }, { title: "Demo source B", url: "https://example.org/pitwall-demo/prototypes" }],
   },
   gt3: {
@@ -77,7 +77,7 @@ const DATA = {
     values: {
       "tires.pressure_front": V(28.0, [27.0, 29.0], "Hot ≈ 33 psi"),
       "tires.pressure_rear": V(27.5, [26.5, 28.5], "Hot ≈ 33 psi"),
-      "gearing.final_drive": R("≈ 45% of slider", "Top gear ends at the braking board"),
+      "gearing.final_drive": R("≈ 45% of slider", "Top gear: no limiter"),
       "alignment.camber_front": V(-2.5, [-3.0, -2.0]),
       "alignment.camber_rear": V(-1.6, [-2.0, -1.2]),
       "alignment.toe_front": V(0.0, [-0.1, 0.1]),
@@ -97,10 +97,10 @@ const DATA = {
       "aero.rear": R("≈ 65% of slider"),
       "brake.balance": V(53, [51, 55]),
       "brake.pressure": V(100, [95, 110]),
-      "diff.accel_rear": V(50, [40, 60], "AWD: same values on both axles"),
+      "diff.accel_rear": V(50, [40, 60], "AWD: same both axles"),
       "diff.decel_rear": V(25, [15, 35]),
     },
-    notes: ["Demo values for the mock."],
+    notes: ["Demo values"],
     sources: [{ title: "Demo source C", url: "https://example.org/pitwall-demo/gt3" }],
   },
   touring: {
@@ -108,11 +108,11 @@ const DATA = {
     values: {
       "tires.pressure_front": V(29.0, [28.0, 30.0], "Hot ≈ 33 psi"),
       "tires.pressure_rear": V(28.0, [27.0, 29.0], "Hot ≈ 33 psi"),
-      "gearing.final_drive": R("≈ 50% of slider", "Top gear ends at the braking board"),
+      "gearing.final_drive": R("≈ 50% of slider", "Top gear: no limiter"),
       "alignment.camber_front": V(-2.2, [-2.8, -1.8]),
       "alignment.camber_rear": V(-1.2, [-1.6, -0.8]),
       "alignment.toe_front": V(0.0, [-0.1, 0.1]),
-      "alignment.toe_rear": V(-0.1, [-0.2, 0.0], "FWD: toe-out helps rotation"),
+      "alignment.toe_rear": V(-0.1, [-0.2, 0.0], "Toe-out for rotation"),
       "alignment.caster": V(5.5, [5.0, 6.5]),
       "arb.front": V(15, [10, 20]),
       "arb.rear": V(25, [18, 32]),
@@ -133,7 +133,7 @@ const DATA = {
       "diff.accel_rear": V(45, [35, 55], "RWD only"),
       "diff.decel_rear": V(20, [10, 30], "RWD only"),
     },
-    notes: ["Demo values for the mock.", "Touring grids mix FWD and RWD: use the rows for your drivetrain."],
+    notes: ["Demo values", "FWD and RWD rows"],
     sources: [{ title: "Demo source D", url: "https://example.org/pitwall-demo/touring" }],
   },
 };

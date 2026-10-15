@@ -69,7 +69,7 @@ export function mount(main, ctx) {
         h("td", null,
           h("a", { class: "row-link", href }, U.fmtDate(s.started_at)),
           h("span", { class: "muted num" }, ` · #${s.id}`),
-          s.id === recordingId ? h("span", { class: "tag tag--rec", style: { marginLeft: "0.5rem" } }, "Recording") : null),
+          s.id === recordingId ? h("span", { class: "rec-mark", style: { marginLeft: "0.75rem" } }, h("span", { class: "rec-lamp", "aria-hidden": "true" }), "Recording") : null),
         h("td", null, h("span", { class: "classbadge" }, U.carClass(s.car_class)), ` ${s.car_pi ?? ""} · ${s.drivetrain ?? ""}`, h("span", { class: "muted num" }, ` · car #${s.car_ordinal ?? "?"}`)),
         h("td", { class: "num" }, U.trackLabel(s.track_ordinal)),
         h("td", { class: "r num" }, String(s.lap_count ?? 0)),

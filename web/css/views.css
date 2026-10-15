@@ -66,10 +66,10 @@ button.chip:hover { border-color: var(--ink-3); color: var(--ink); background: v
 .analysis { display: grid; gap: var(--s-4); }
 .next {
   display: grid; gap: var(--s-1);
-  padding: var(--s-2) var(--s-4) var(--s-3);
-  border: 2px solid var(--orange); background: var(--tarmac-1);
+  padding: var(--s-3) var(--s-4) var(--s-3);
+  background: var(--tarmac-2); box-shadow: inset 0 3px 0 var(--orange);
 }
-.next--none { border: 2px dashed var(--rule-strong); }
+.next--none { background: transparent; box-shadow: none; border-top: 1px solid var(--rule-strong); border-bottom: 1px solid var(--rule); }
 .next__head { display: flex; align-items: center; gap: var(--s-2); font-size: var(--t-md); font-weight: 700; color: var(--orange-ink); }
 .next--none .next__head { color: var(--ink-2); }
 .next__rec { font-size: var(--t-2xl); font-weight: 700; line-height: 1.05; text-wrap: balance; }
@@ -85,7 +85,9 @@ button.chip:hover { border-color: var(--ink-3); color: var(--ink); background: v
 
 .findings { display: grid; border-top: 1px solid var(--rule); }
 .finding { display: grid; grid-template-columns: 4rem minmax(0, 1fr); gap: var(--s-3); padding: var(--s-2) 0; border-bottom: 1px solid var(--rule); }
-.finding__sev { padding-top: 0.35rem; }
+.finding__sev { padding-top: 0.35rem; display: grid; gap: 0.15rem; justify-items: start; font-size: var(--t-sm); color: var(--ink-3); }
+.rec-mark { display: inline-flex; align-items: center; gap: 0.4em; font-size: var(--t-sm); font-weight: 600; color: var(--ink); }
+.rec-mark .rec-lamp { width: 0.7rem; height: 0.7rem; background: var(--rec); box-shadow: none; }
 .finding__body { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-3); }
 .finding__title { flex-basis: 100%; font-size: var(--t-md); font-weight: 600; }
 .finding__evidence { font-size: var(--t-base); color: var(--ink-2); }
@@ -190,7 +192,7 @@ button.chip:hover { border-color: var(--ink-3); color: var(--ink); background: v
    A printed setup sheet: sections in the game's menu order, flowed into
    columns so the whole car fits one screen. */
 
-.base-tag { color: var(--ink-2); }
+.base-kicker { font-size: var(--t-md); font-weight: 500; color: var(--ink-3); }
 .base-view .inline-field .select { min-width: 18rem; min-height: 2.35rem; }
 .base-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 17rem; gap: var(--s-5); }
 .base-main { min-width: 0; min-height: 0; overflow: auto; }
@@ -206,8 +208,14 @@ button.chip:hover { border-color: var(--ink-3); color: var(--ink); background: v
 .base-row:not(.is-first) > * { border-top: 0; }
 .base-row__axle { width: 11%; color: var(--ink-2); }
 .base-row__value { width: 19%; font-size: var(--t-md); font-weight: 700; color: var(--ink); white-space: nowrap; }
-.base-row__value--rel { font-size: var(--t-base); font-weight: 600; color: var(--ink-2); }
-.base-row__range { width: 17%; color: var(--ink-3); font-size: var(--t-sm); white-space: nowrap; }
+.base-row__value--rel { font-size: var(--t-base); font-weight: 600; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.base-row__range { width: 17%; color: var(--ink-3); font-size: var(--t-sm); white-space: nowrap; vertical-align: middle; }
+/* The game's slider, drawn the way the board draws a gauge: flat track, filled to the mark. */
+.base-slider { position: relative; display: block; block-size: 0.5rem; margin-right: var(--s-3); background: var(--tarmac-0); box-shadow: inset 0 0 0 1px var(--rule-strong); }
+.base-slider__fill { position: absolute; inset-block: 0; left: 0; background: oklch(1 0 0 / 0.16); }
+.base-slider__mark { position: absolute; top: -0.25rem; bottom: -0.25rem; width: 0.25rem; margin-left: -0.125rem; background: var(--ink); }
+.base-note { border-bottom: 1px dotted var(--ink-3); cursor: help; }
+.base-note__full { display: none; }
 .base-row__note { color: var(--ink-3); font-size: var(--t-sm); line-height: 1.15; padding-right: 0; }
 .base-row__note span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 
@@ -266,6 +274,10 @@ button.chip:hover { border-color: var(--ink-3); color: var(--ink); background: v
   .base-row__value--rel { white-space: normal; }
   .base-row__range { grid-area: range; text-align: right; }
   .base-row__note { grid-area: note; }
+  .base-note { border: 0; cursor: auto; }
+  .base-note__short { display: none; }
+  .base-note__full { display: inline; }
+  .base-slider { margin: 0.45rem 0 0 auto; inline-size: 7rem; }
   .base-view .inline-field { width: 100%; }
   .base-view .inline-field .select { min-width: 0; flex: 1; }
   .flagcode > div { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }

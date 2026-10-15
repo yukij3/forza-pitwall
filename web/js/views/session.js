@@ -68,7 +68,7 @@ export function mount(main, ctx, route) {
     clear(head).append(
       h("h1", null, `Session ${s.id}`),
       h("span", { class: "session-head__date num" }, `${U.fmtDate(s.started_at)}${s.stopped_at ? ` to ${U.fmtClock(s.stopped_at)}` : ""}`),
-      isRec ? h("span", { class: "tag tag--rec" }, "Recording") : null);
+      isRec ? h("span", { class: "rec-mark" }, h("span", { class: "rec-lamp", "aria-hidden": "true" }), "Recording") : null);
     const note = h("input", { class: "input", id: "session-note", name: "note", autocomplete: "off", value: s.note || "" });
     const noteState = h("span", { class: "field-state", "aria-live": "polite" });
     let saved = s.note || "";

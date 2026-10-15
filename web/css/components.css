@@ -272,15 +272,6 @@
 }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
-.tag {
-  display: inline-flex; align-items: center; gap: 0.35em;
-  padding: 0.1em 0.45em; font-size: var(--t-sm); font-weight: 700; letter-spacing: 0.04em;
-  text-transform: uppercase; border: 1px solid currentColor; color: var(--ink-2);
-  white-space: nowrap;
-}
-.tag--new { color: var(--flag-black); background: var(--flag-yellow); border-color: var(--flag-yellow); }
-.tag--active { color: var(--ink-on-orange); background: var(--orange); border-color: var(--orange); }
-.tag--rec { color: var(--rec-ink); background: var(--rec); border-color: var(--rec); }
 
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: var(--s-2) var(--s-4); font-size: var(--t-md); }
 .kv dt { color: var(--ink-3); }

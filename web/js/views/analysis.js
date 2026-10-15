@@ -32,7 +32,7 @@ function findingsList(findings, onWhere) {
     return h("li", { class: "finding" },
       h("div", { class: "finding__sev", title: `Severity ${Math.round(sev * 100)}%` },
         h("span", { class: "segments", "aria-hidden": "true" }, [0, 1, 2, 3, 4].map((i) => h("i", { class: i < on ? "on" : "" }))),
-        h("span", { class: "sr-only" }, `Severity ${Math.round(sev * 100)}%`)),
+        h("span", { class: "num" }, h("span", { class: "sr-only" }, "Severity "), `${Math.round(sev * 100)}%`)),
       h("div", { class: "finding__body" },
         h("h3", { class: "finding__title" }, f.title),
         f.evidence ? h("p", { class: "finding__evidence num" }, reasonLine(f.evidence)) : null,

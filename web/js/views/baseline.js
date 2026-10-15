@@ -38,6 +38,29 @@ function withUnit(v, unit, d) {
   return `${s} ${unit}`;
 }
 
+/** "≈ 60% of slider" → 60, for drawing the slider position. */
+function sliderPct(relative) {
+  const m = String(relative || "").match(/(\d+(?:\.\d+)?)\s*%\s*of\s+(?:the\s+)?slider/i);
+  return m ? Math.min(100, Math.max(0, Number(m[1]))) : null;
+}
+
+/** In-game style slider track with the suggested position marked. */
+function sliderTrack(pct) {
+  return h("span", { class: "base-slider", "aria-hidden": "true" },
+    h("i", { class: "base-slider__fill", style: { width: `${pct}%` } }),
+    h("i", { class: "base-slider__mark", style: { left: `${pct}%` } }));
+}
+
+const SHORT_NOTE_WORDS = 4;
+function noteCell(note) {
+  if (!note) return h("td", { class: "base-row__note" });
+  const text = U.minus(note);
+  if (text.trim().split(/\s+/).length <= SHORT_NOTE_WORDS) return h("td", { class: "base-row__note" }, gameText(text));
+  // Longer notes live in a tooltip on desktop; phones have room to show them in full.
+  return h("td", { class: "base-row__note" },
+    h("span", { class: "base-note", title: text, tabindex: "0" }, h("span", { class: "base-note__short" }, "Note"), h("span", { class: "base-note__full" }, gameText(text))));
+}
+
 function rangeText(range, d) {
   if (!Array.isArray(range) || range.length !== 2) return "";
   return `${num(range[0], d)} … ${num(range[1], d)}`;
@@ -77,9 +100,11 @@ function sheet(baseline) {
             h("td", { class: "base-row__axle" }, r.axle || ""),
             hasValue
               ? h("td", { class: "base-row__value num" }, withUnit(r.value, r.unit, d))
-              : h("td", { class: "base-row__value base-row__value--rel", colspan: "2" }, r.relative ? U.minus(r.relative) : "–"),
-            hasValue ? h("td", { class: "base-row__range num", title: r.range ? "Range" : null }, rangeText(r.range, d)) : null,
-            h("td", { class: "base-row__note" }, r.note ? h("span", { title: r.note }, gameText(U.minus(r.note))) : ""));
+              : h("td", { class: "base-row__value base-row__value--rel" }, r.relative ? U.minus(r.relative) : "–"),
+            hasValue
+              ? h("td", { class: "base-row__range num", title: r.range ? "Range" : null }, rangeText(r.range, d))
+              : h("td", { class: "base-row__range" }, sliderPct(r.relative) !== null ? sliderTrack(sliderPct(r.relative)) : ""),
+            noteCell(r.note));
         }))));
   }));
 }
@@ -97,7 +122,7 @@ export function mount(main, ctx, route) {
   const facts = h("dl", { class: "base-facts" });
   const notes = h("div", { class: "base-notes" });
   const body = h("div", { class: "base-main" }, h("span", { class: "skeleton", style: { height: "20rem" } }));
-  const title = h("span", { class: "tag base-tag" }, "Starting point");
+  const title = h("span", { class: "base-kicker" }, "Starting point");
 
   main.append(h("div", { class: "view base-view" },
     h("div", { class: "view__top" },

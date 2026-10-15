@@ -42,9 +42,10 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: repeat(var(--rows, 6), minmax(min-content, 1fr));
-  grid-auto-flow: column;
   column-gap: var(--s-5);
 }
+.board__list > .item:not(.is-focus) { grid-column: var(--col, auto); grid-row: var(--row, auto); }
+.item--vacant { padding: 0; }
 .board__list.has-focus { grid-template-rows: auto repeat(var(--rows, 6), minmax(min-content, 1fr)); }
 
 .item {
@@ -70,7 +71,7 @@
 .item__value { font-size: var(--t-md); font-weight: 600; white-space: nowrap; text-align: right; line-height: 1.1; }
 .item .gauge { block-size: 0.55rem; }
 .item .gauge__value { top: -0.25rem; bottom: -0.25rem; width: 0.3rem; margin-left: -0.15rem; }
-.item__rec { font-size: var(--t-xl); font-weight: 700; line-height: 1.1; }
+.item__rec { font-size: var(--t-lg); font-weight: 600; line-height: 1.1; color: var(--ink-2); }
 .item__rec.is-empty { font-size: var(--t-base); font-weight: 500; color: var(--ink-3); }
 .item__recmeta { font-size: var(--t-xs); color: var(--ink-3); }
 
@@ -95,7 +96,7 @@
 .item.is-focus .item__value { font-size: var(--t-xl); }
 .item.is-focus .gauge { block-size: 0.8rem; }
 .item.is-focus .item__reading { align-self: center; }
-.item.is-focus .item__rec { font-size: var(--t-3xl); line-height: 1.05; }
+.item.is-focus .item__rec { font-size: var(--t-3xl); font-weight: 700; line-height: 1.05; color: var(--ink); }
 .item.is-focus .item__recmeta { font-size: var(--t-sm); }
 .item__reason { grid-area: reason; font-size: var(--t-base); color: var(--ink-2); }
 .item:not(.is-focus) .item__reason { display: none; }
@@ -105,7 +106,8 @@
 
 @container board (max-width: 52rem) {
   .board__list, .board__list.has-focus { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; grid-template-rows: none; }
-  .item.is-focus { grid-row: auto; }
+  .board__list > .item:not(.is-focus), .item.is-focus { grid-column: auto; grid-row: auto; }
+  .item--vacant { display: none; }
 }
 @container board (max-width: 30rem) {
   .item { grid-template-columns: 4.5rem minmax(0, 1fr); grid-template-areas: "status name" "status reading" "change change"; }
@@ -120,7 +122,9 @@
 /* ------------------------------------------------------------------- side
    One slim panel, sections split by hairlines. */
 
-.side { background: var(--tarmac-1); border: 1px solid var(--rule); }
+.side { display: flex; flex-direction: column; background: var(--tarmac-1); border: 1px solid var(--rule); }
+.side > .inputs { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.side > .inputs .lanes { flex: 1; grid-auto-rows: minmax(1.7rem, 1fr); min-height: 0; }
 .side__block { padding: var(--s-2) var(--s-3) var(--s-3); border-bottom: 1px solid var(--rule); }
 .side__block:last-child { border-bottom: 0; }
 .side__title { display: flex; align-items: baseline; gap: var(--s-2); flex-wrap: wrap; font-size: var(--t-sm); font-weight: 600; color: var(--ink-2); margin-bottom: var(--s-1); }
@@ -194,7 +198,7 @@
 .lane { display: grid; grid-template-columns: 3.6rem 2.8rem minmax(0, 1fr); align-items: center; gap: var(--s-2); }
 .lane__label { font-size: var(--t-xs); color: var(--ink-2); font-weight: 600; }
 .lane__value { font-size: var(--t-sm); text-align: right; font-weight: 600; }
-.lane__canvas { width: 100%; height: 1.7rem; background: var(--tarmac-0); }
+.lane__canvas { width: 100%; height: 100%; min-height: 1.7rem; max-height: 7rem; align-self: stretch; background: var(--tarmac-0); }
 
 /* ------------------------------------------------------------------ setup */
 
