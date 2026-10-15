@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import time
 from dataclasses import replace
 from functools import cache
@@ -278,6 +279,7 @@ def test_yaw_model_is_dropped_when_steering_is_not_proportional() -> None:
 def test_gamepad_understeer_is_still_found_from_slip_angles_with_a_caveat() -> None:
     la = analyse(_gamepad(laps("understeer")[1]))
     f = next(f for f in la.findings if f.id == "mid-understeer")
-    assert "full lock" in f.evidence
+    assert re.search(r"· full lock \d+%", f.evidence)  # a token, not a sentence
+    assert f.detail and "steering input" in f.detail
     ref = next(f for f in analyse(laps("understeer")[1]).findings if f.id == "mid-understeer")
     assert f.confidence < ref.confidence

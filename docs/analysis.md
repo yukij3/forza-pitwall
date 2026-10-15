@@ -221,10 +221,32 @@ lateral g, speed band, phase balances, wheelspin), `findings`,
 lap, without hysteresis) and `limits`.
 
 Finding fields: `id`, `title`, `severity` (0..1), `confidence` (0..1),
-`evidence`, `where` (`[{distance, corner}]`, distance in metres from the start
-of the lap, corner 1-based or `null` on a straight), `axle`, `item` (the board
-item that measures it), `laps` and `consistency` (session only; 1 and 1.0 for
-a single lap).
+`evidence`, `detail`, `where` (`[{distance, corner}]`, distance in metres from
+the start of the lap, corner 1-based or `null` on a straight), `axle`, `item`
+(the board item that measures it), `laps` and `consistency` (session only; 1
+and 1.0 for a single lap).
+
+### UI text
+
+The UI shows as little text as possible, so every string meant for a row is one
+compact line of tokens joined by ` · `, numbers over words, about 60
+characters at most and never a sentence:
+
+| Field | Example |
+|---|---|
+| `Finding.evidence`, `Recommendation.reason` | `Understeer +0.64 · 4 slow corners · full lock 91%`, `Front lockups · 2/12 stops`, `6th · 68% rpm · peak power 76%` |
+| session `Finding.evidence` | the lap line plus the lap count: `Rear wheelspin · 5/8 exits · 3/3 laps` |
+| `BoardItem.value_text` | `Understeer 0.39`, `2/12 stops`, `6th · 80% rpm`, `Limiter 1.2 s · 6th`, `Front +3 °C vs rear` (≤ 24 characters) |
+| `BoardItem.target_text` | `−0.05 … +0.10`, `≤ 1 in 10 stops`, `≥ peak power (76%), no limiter` |
+
+The explanation lives in the optional `detail` field (`null` when there is
+none), meant for a tooltip. `Finding.detail` holds the evidence in sentences
+(`… front tires past the grip limit in 3 of 4; steering at full lock 91% of the
+time, so part of the front slip is the steering input, not the set-up (seen in
+9 of 10 laps)`). `Recommendation.detail` adds why the change helps (`A softer
+front anti-roll bar gives the front tires more grip.`). The balance line ends
+with `front slides 3/4` (corners with the front past its grip limit), or
+`full lock 91%` when the gamepad caveat applies.
 
 ## Board items and status bands
 
@@ -357,7 +379,9 @@ balances 0–100 %, otherwise not below zero).
 
 Recommendation fields: `id` (`<setting>-up|down`, or `revert-<setting>`),
 `finding_id`, `setting`, `section`, `label`, `axle`, `direction`, `step`,
-`step_unit`, `suggested_value`, `text`, `reason` (evidence plus the mechanism),
+`step_unit`, `suggested_value`, `text`, `reason` (the finding's compact
+evidence line; for a revert `Last change hurt · lap +0.42 s · …`), `detail`
+(evidence and the mechanism in sentences, see [UI text](#ui-text)),
 `confidence`, `priority`.
 
 ## Confidence

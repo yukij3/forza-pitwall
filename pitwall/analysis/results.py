@@ -82,12 +82,13 @@ class Finding:
     title: str
     severity: float  # 0..1
     confidence: float  # 0..1
-    evidence: str
+    evidence: str  # one compact line: "Understeer +0.64 · 4 slow corners · full lock 91%"
     where: tuple[Where, ...] = ()
     axle: str | None = None  # "front" | "rear" when the symptom is axle-specific
     item: str | None = None  # live board item that measures it
     laps: int = 1  # session: laps where it was seen
     consistency: float = 1.0  # session: share of valid laps where it was seen
+    detail: str | None = None  # the evidence in sentences (tooltip)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -101,6 +102,7 @@ class Finding:
             "item": self.item,
             "laps": self.laps,
             "consistency": rnd(self.consistency),
+            "detail": self.detail,
         }
 
 
@@ -119,9 +121,10 @@ class Recommendation:
     step_unit: str
     suggested_value: float | None
     text: str
-    reason: str
+    reason: str  # one compact line: "Understeer +0.64 · 4 slow corners"
     confidence: float
     priority: int = 1
+    detail: str | None = None  # evidence and why the change helps, in sentences (tooltip)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -137,6 +140,7 @@ class Recommendation:
             "suggested_value": self.suggested_value,
             "text": self.text,
             "reason": self.reason,
+            "detail": self.detail,
             "confidence": rnd(self.confidence),
             "priority": self.priority,
         }

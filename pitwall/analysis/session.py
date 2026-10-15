@@ -127,7 +127,8 @@ def _aggregate(valid: Sequence[LapAnalysis], consistency: dict[str, Any]) -> lis
         top = max(fs, key=lambda f: f.severity)
         axle = Counter(f.axle for f in fs).most_common(1)[0][0]
         conf = mean(f.confidence for f in fs) * lap_factor * (0.5 + 0.5 * share) * driver
-        evidence = top.evidence + (f" (seen in {k} of {n} laps)" if n > 1 else "")
+        evidence = top.evidence + (f" · {k}/{n} laps" if n > 1 else "")
+        detail = (top.detail or top.evidence) + (f" (seen in {k} of {n} laps)" if n > 1 else "")
         out.append(
             Finding(
                 id=fid,
@@ -140,6 +141,7 @@ def _aggregate(valid: Sequence[LapAnalysis], consistency: dict[str, Any]) -> lis
                 item=top.item,
                 laps=k,
                 consistency=share,
+                detail=detail,
             )
         )
     out.sort(key=lambda f: -(f.severity * f.confidence * f.consistency))
@@ -269,10 +271,12 @@ def _verdict(
         back = Change(c.setting, -_change_dir(c), 1.0, "undo it")
         slug = c.setting.replace(".", "-").replace("_", "-")
         effect = f"gave {detail}"
+        lap_token = f"lap {_seconds(delta)} s" if delta is not None and lap_worse else ""
         revert = build_recommendation(
             back,
             finding_id=targets[0] if targets else "last-change",
-            reason=f"The last change ({descs[0]}) {effect}. Undo it before trying something else.",
+            reason=" · ".join(p for p in ("Last change hurt", lap_token, *parts[:1]) if p),
+            detail=f"The last change ({descs[0]}) {effect}. Undo it before trying something else.",
             confidence=0.6,
             unit_system=unit_system,
             tune_values=tune_values,
@@ -310,7 +314,8 @@ def _choose(
         return build_recommendation(
             ch,
             finding_id=f.id,
-            reason=reason_text(f.evidence, ch.why),
+            reason=f.evidence,
+            detail=reason_text(f.detail or f.evidence, ch.why),
             confidence=f.confidence * prior,
             unit_system=unit_system,
             tune_values=tune_values,

@@ -91,9 +91,10 @@ class Assessment:
     score: float  # band score: <= 0 inside the OK band, 0.5 at the bad edge
     confidence: float
     finding_id: str | None = None
-    evidence: str = ""
+    evidence: str = ""  # one compact line: "Understeer +0.64 · 4 slow corners"
     where: list[Where] = field(default_factory=list)
     axle: str | None = None
+    detail: str = ""  # the same in sentences, for a tooltip
 
     @property
     def min_samples(self) -> int:
@@ -155,6 +156,11 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
+def _line(*parts: str) -> str:
+    """Compact evidence: the non-empty parts joined with a middle dot."""
+    return " · ".join(p for p in parts if p)
+
+
 def _plural(n: int, word: str) -> str:
     return f"{n} {word}" + ("" if n == 1 else "s")
 
@@ -203,20 +209,26 @@ def _balance(
 
     word = "understeer" if under else "oversteer"
     axle = "front" if under else "rear"
-    evidence = (
+    detail = (
         f"{_PHASE_WORDS[phase].capitalize()} balance {_signed(v)} ({word}) over "
         f"{_plural(n, corner_word)}; {axle} tires past the grip limit in {len(flagged)} of {n}"
     )
+    kind = corner_word.removesuffix("corner").strip()  # "slow", "fast" or "" (all corners)
+    where_text = f"{kind} corners" if kind else ""
+    caveat = f"{axle} slides {len(flagged)}/{n}"  # the count is in the fraction
     if not under:
         cs_count = sum(1 for c in cs if c.phase(phase).countersteer_s >= 0.1)
         if cs_count:
-            evidence += f", counter-steer in {cs_count}"
+            detail += f", counter-steer in {cs_count}"
     elif pinned >= PINNED_SHARE_CAVEAT:
         confidence *= PINNED_CONFIDENCE_FACTOR
-        evidence += (
+        where_text = _plural(n, corner_word)
+        caveat = f"full lock {pinned:.0%}"
+        detail += (
             f"; steering at full lock {pinned:.0%} of the time, so part of the front slip "
             "is the steering input, not the set-up"
         )
+    evidence = _line(f"{word.capitalize()} {_signed(v)}", where_text, caveat)
     shown = flagged or sorted(cs, key=lambda c: -abs(c.phase(phase).balance or 0.0))[:3]
     where = [Where(c.apex_dist, c.number or None) for c in shown]
     return Assessment(
@@ -231,6 +243,7 @@ def _balance(
         evidence,
         where,
         axle,
+        detail,
     )
 
 
@@ -240,7 +253,7 @@ def _rate(item: str, events: int, total: int, unit: str) -> tuple[float, float, 
     score = band_score(rate, BANDS[item])
     if events < MIN_EVENTS_FOR_WARN:
         score = min(score, _BELOW_WARN)
-    return rate, score, f"{events} of {total} {unit}"
+    return rate, score, f"{events}/{total} {unit}"
 
 
 def _event_confidence(events: int, total: int) -> float:
@@ -256,7 +269,8 @@ def _wheelspin(ev: Evidence) -> Assessment:
     rate, score, text = _rate(item, len(spins), n, "exits")
     driven = DRIVEN_AXLES.get(ev.drivetrain, ("rear",))
     axle = Counter(c.spin_axle for c in spins).most_common(1)[0][0] if spins else driven[-1]
-    evidence = (
+    evidence = _line(f"{axle.capitalize()} wheelspin", f"{len(spins)}/{n} exits")
+    detail = (
         f"Driven {axle} wheels spin (slip ratio above 1.0 under throttle) on {len(spins)} of "
         f"{_plural(n, 'corner exit')}"
     )
@@ -273,6 +287,7 @@ def _wheelspin(ev: Evidence) -> Assessment:
         evidence,
         where,
         axle,
+        detail,
     )
 
 
@@ -287,12 +302,17 @@ def _lockups(ev: Evidence, axle: str) -> Assessment:
     other_locked = sum(1 for b in bs if (b.locked_rear if axle == "front" else b.locked_front))
     other_score = band_score(other_locked / n, BANDS[f"lockups_{other}"]) if n else -1.0
     both = score > 0 and other_score > 0 and other_locked >= MIN_EVENTS_FOR_WARN
-    evidence = (
-        f"{axle.capitalize()} wheels lock (slip ratio below {MINUS}1.0 under braking) in "
+    evidence = _line(
+        f"{axle.capitalize()} lockups",
+        f"{len(locked)}/{n} stops",
+        f"{other} {other_locked}/{n}" if both else "",
+    )
+    detail = (
+        f"A {axle} wheel stops under braking (for 0.1 s or more) in "
         f"{len(locked)} of {_plural(n, 'braking zone')}"
     )
     if both:
-        evidence += f"; the {other} wheels lock in {other_locked}"
+        detail += f"; a {other} wheel stops in {other_locked}"
     where = []
     for b in locked:
         d = b.lock_front_dist if axle == "front" else b.lock_rear_dist
@@ -310,6 +330,7 @@ def _lockups(ev: Evidence, axle: str) -> Assessment:
         evidence,
         where,
         None if both else axle,
+        detail,
     )
 
 
@@ -320,7 +341,8 @@ def _stability(ev: Evidence) -> Assessment:
     n = len(bs)
     bad = [b for b in bs if b.unstable]
     rate, score, text = _rate(item, len(bad), n, "stops")
-    evidence = (
+    evidence = _line("Rear slides under braking", f"{len(bad)}/{n} stops")
+    detail = (
         f"Rear slides (rear slip angle above the front) while braking in a straight line in "
         f"{len(bad)} of {_plural(n, 'braking zone')}"
     )
@@ -337,6 +359,7 @@ def _stability(ev: Evidence) -> Assessment:
         evidence,
         where,
         "rear",
+        detail,
     )
 
 
@@ -348,7 +371,8 @@ def _bottoming(ev: Evidence, axle: str) -> Assessment:
     score = band_score(float(k), BANDS[item])
     spots = len({round(e.dist / 50.0) for e in evs})
     confidence = 0.5 + 0.1 * min(3, k) + (0.1 if spots >= 2 else 0.0)
-    evidence = (
+    evidence = _line(f"{axle.capitalize()} bottoming", _plural(k, "hit"), _plural(spots, "spot"))
+    detail = (
         f"{axle.capitalize()} suspension reached full compression at speed "
         f"{_plural(k, 'time')} at {_plural(spots, 'spot')}"
     )
@@ -365,6 +389,7 @@ def _bottoming(ev: Evidence, axle: str) -> Assessment:
         evidence,
         where,
         axle,
+        detail,
     )
 
 
@@ -375,10 +400,7 @@ _PEAK_BANDS = Bands(GEARING_PEAK_OK, None, GEARING_PEAK_BAD, None, 1)
 def _gearing(ev: Evidence) -> Assessment:
     item = "gearing"
     peak = ev.peak_power_rpm
-    if peak is None:
-        target = "85–98% rpm in top gear, no limiter"
-    else:
-        target = f"at or past peak power ({peak:.0%} rpm) in top gear, no limiter"
+    target = "85–98% rpm, no limiter" if peak is None else f"≥ peak power ({peak:.0%}), no limiter"
     sts = [s for s in ev.straights if not s.cut_end and s.length >= LONG_STRAIGHT_MIN_M]
     if not sts:
         return Assessment(item, None, "No long straight yet", target, 0, 0.0, 0.0)
@@ -390,14 +412,15 @@ def _gearing(ev: Evidence) -> Assessment:
     if in_top and st.limiter_s >= LIMITER_OK_S:
         score = min(1.0, 0.5 * (st.limiter_s - LIMITER_OK_S) / (LIMITER_BAD_S - LIMITER_OK_S))
         score = max(score, 0.05)
-        evidence = (
+        evidence = _line(f"Limiter {st.limiter_s:.1f} s", gear, f"{st.length:.0f} m straight")
+        detail = (
             f"On the rev limiter for {st.limiter_s:.1f} s in {gear} at the end of the "
             f"{st.length:.0f} m straight"
         )
         return Assessment(
             item,
             st.end_rpm_pct,
-            f"Limiter {st.limiter_s:.1f} s in {gear}",
+            f"Limiter {st.limiter_s:.1f} s · {gear}",
             target,
             len(sts),
             score,
@@ -405,21 +428,21 @@ def _gearing(ev: Evidence) -> Assessment:
             "gearing-short",
             evidence,
             where,
+            detail=detail,
         )
-    value_text = f"{gear} at {st.end_rpm_pct:.0%} rpm"
+    value_text = f"{gear} · {st.end_rpm_pct:.0%} rpm"
     if in_top and st.gear_time_s >= GEAR_SETTLED_S:
+        detail = (
+            f"The top gear used ({gear}) only reaches {st.end_rpm_pct:.0%} of max rpm at "
+            f"the end of the {st.length:.0f} m straight"
+        )
         if peak is None:
             score = band_score(st.end_rpm_pct, BANDS[item])
-            evidence = (
-                f"The top gear used ({gear}) only reaches {st.end_rpm_pct:.0%} of max rpm at "
-                f"the end of the {st.length:.0f} m straight"
-            )
+            evidence = _line(value_text, f"{st.length:.0f} m straight")
         else:
             score = band_score(st.end_rpm_pct / peak, _PEAK_BANDS)
-            evidence = (
-                f"The top gear used ({gear}) only reaches {st.end_rpm_pct:.0%} of max rpm at "
-                f"the end of the {st.length:.0f} m straight; peak power is at {peak:.0%}"
-            )
+            evidence = _line(value_text, f"peak power {peak:.0%}")
+            detail += f"; peak power is at {peak:.0%}"
         return Assessment(
             item,
             st.end_rpm_pct,
@@ -431,6 +454,7 @@ def _gearing(ev: Evidence) -> Assessment:
             "gearing-long" if score > 0 else None,
             evidence,
             where,
+            detail=detail,
         )
     return Assessment(item, st.end_rpm_pct, value_text, target, len(sts), -0.5, 0.5)
 
@@ -459,7 +483,8 @@ def _tires(ev: Evidence) -> Assessment:
         else:
             finding = f"tires-hot-{hot_axle}"
     axle = finding.rsplit("-", 1)[1] if finding else None
-    evidence = (
+    evidence = _line(f"Front {front:.0f} °C", f"rear {rear:.0f} °C")
+    detail = (
         f"Average tire temperature front {front:.0f} °C, rear {rear:.0f} °C "
         f"(one value per tire; pressure isn't in Data Out)"
     )
@@ -476,6 +501,7 @@ def _tires(ev: Evidence) -> Assessment:
         evidence,
         [],
         axle,
+        detail,
     )
 
 
@@ -530,6 +556,7 @@ def finding_from(a: Assessment) -> Finding:
         where=tuple(a.where),
         axle=a.axle,
         item=a.item,
+        detail=a.detail or None,
     )
 
 
@@ -543,8 +570,13 @@ def recommend(
     unit_system: str,
     tune_values: dict[str, float] | None,
     priority: int = 1,
+    detail: str | None = None,
 ) -> Recommendation | None:
-    """The first applicable rule for a finding, as a Recommendation."""
+    """The first applicable rule for a finding, as a Recommendation.
+
+    ``reason`` is the finding's compact evidence line; ``detail`` adds the
+    finding's sentences and why the change helps.
+    """
     tv = tune_values or {}
     cands = applicable_changes(finding_id, drivetrain, axle, tv, unit_system)
     if not cands:
@@ -553,7 +585,8 @@ def recommend(
     return build_recommendation(
         change,
         finding_id=finding_id,
-        reason=reason_text(evidence, change.why),
+        reason=evidence,
+        detail=reason_text(detail or evidence, change.why),
         confidence=confidence * prior,
         unit_system=unit_system,
         tune_values=tv,
@@ -607,6 +640,7 @@ def build_board(
                 drivetrain=drivetrain,
                 unit_system=unit_system,
                 tune_values=tune_values,
+                detail=a.detail,
             )
         if rec is not None:
             weight = max(a.severity, 0.05) * rec.confidence * (1.5 if status == "bad" else 1.0)

@@ -10,7 +10,7 @@ Every result type has ``to_dict()`` with JSON-ready output in canonical API
 units. See ``docs/analysis.md`` for metrics, thresholds and rules.
 """
 
-__version__ = "1.1"  # bump when results change, so cached analyses are recomputed
+__version__ = "1.2"  # bump when results change, so cached analyses are recomputed
 
 from .lap import analyze_lap
 from .live import LiveAnalyzer

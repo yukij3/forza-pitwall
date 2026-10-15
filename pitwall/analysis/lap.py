@@ -266,6 +266,7 @@ def analyze_lap(frames: Sequence[Frame], ctx: LapContext) -> LapAnalysis:
             unit_system=ctx.unit_system,
             tune_values=tune_values,
             priority=len(recs) + 1,
+            detail=a.detail,
         )
         if rec is not None and all(r.setting != rec.setting for r in recs):
             recs.append(rec)
