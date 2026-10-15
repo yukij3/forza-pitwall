@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+data/
+*.pitwall
+.DS_Store
+.impeccable/config.local.json
+.worktrees/
+
+# Internal working docs: kept locally, never published
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+/PRODUCT.md
+/DESIGN.md
+/DESIGN.json
+/SPEC.md
+/notes/
+.impeccable/
+.claude/
