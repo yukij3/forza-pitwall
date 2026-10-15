@@ -1,0 +1,217 @@
+"""Adapter between stored laps/sessions and the per-lap / per-session analysis.
+
+Runs the engine on one worker thread (never on the event loop) and caches
+results as JSON in the database, keyed by a fingerprint of everything the
+result depends on, so a stale result is recomputed automatically.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import logging
+import threading
+from collections import OrderedDict
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, TypeVar
+
+from pitwall.services.engine import (
+    ENGINE_MODULE,
+    AnalysisFailed,
+    LazyModule,
+    drivetrain_code,
+    to_dict,
+    unit_system_for,
+)
+from pitwall.services.frames import LapFrames
+from pitwall.services.tunes import diff_values
+from pitwall.storage.db import NotFound, Store
+from pitwall.telemetry.model import Frame
+
+log = logging.getLogger(__name__)
+
+T = TypeVar("T")
+_OBJECT_CACHE_SIZE = 512
+
+
+class AnalysisRunner:
+    def __init__(
+        self,
+        store: Store,
+        frames: LapFrames,
+        engine: LazyModule | None = None,
+    ) -> None:
+        self.store = store
+        self.frames = frames
+        self.engine = engine or LazyModule(ENGINE_MODULE)
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="analysis")
+        self._objects: OrderedDict[tuple[int, str], Any] = OrderedDict()
+        self._lock = threading.Lock()
+
+    @property
+    def available(self) -> bool:
+        return self.engine.available
+
+    def close(self) -> None:
+        self._executor.shutdown(wait=False, cancel_futures=True)
+
+    async def _run(self, fn: Callable[..., T], *args: Any) -> T:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, fn, *args)
+
+    # --- public async API ---------------------------------------------------
+
+    async def lap(self, lap_id: int, frames: list[Frame] | None = None) -> dict[str, Any]:
+        self.engine.require()
+        return await self._run(self.lap_sync, lap_id, frames)
+
+    async def session(self, session_id: int) -> dict[str, Any]:
+        self.engine.require()
+        return await self._run(self.session_sync, session_id)
+
+    # --- sync implementation (worker thread) --------------------------------
+
+    def lap_sync(self, lap_id: int, frames: list[Frame] | None = None) -> dict[str, Any]:
+        lap = self.store.get_lap(lap_id)
+        session = self.store.get_session(int(lap["session_id"]))
+        fingerprint = self._lap_fingerprint(session, lap)
+        cached = self.store.get_cached_analysis("lap", lap_id, fingerprint)
+        if cached is not None:
+            return cached
+        result = to_dict(self._lap_object(session, lap, frames))
+        self.store.put_cached_analysis("lap", lap_id, fingerprint, result)
+        return result
+
+    def session_sync(self, session_id: int) -> dict[str, Any]:
+        session = self.store.get_session(session_id)
+        laps = self.store.list_laps(session_id)
+        previous = self.store.previous_session(session)
+        previous_laps = self.store.list_laps(int(previous["id"])) if previous else []
+        fingerprint = _hash(
+            self._engine_version(),
+            session.get("tune_id"),
+            [(lap["id"], lap["kind"], lap["valid"]) for lap in laps],
+            previous["id"] if previous else None,
+            previous.get("tune_id") if previous else None,
+            [lap["id"] for lap in previous_laps],
+        )
+        cached = self.store.get_cached_analysis("session", session_id, fingerprint)
+        if cached is not None:
+            return cached
+
+        engine = self.engine.require()
+        previous_result = None
+        if previous is not None and previous_laps:
+            previous_objs = [self._lap_object(previous, lap) for lap in previous_laps]
+            previous_result = self._call(
+                engine.analyze_session,
+                previous_objs,
+                self._session_context(previous, previous_session=None, tune_changes=[]),
+            )
+        lap_objs = [self._lap_object(session, lap) for lap in laps]
+        ctx = self._session_context(
+            session,
+            previous_session=previous_result,
+            tune_changes=self._tune_changes(previous, session),
+        )
+        result = to_dict(self._call(engine.analyze_session, lap_objs, ctx))
+        self.store.put_cached_analysis("session", session_id, fingerprint, result)
+        return result
+
+    # --- helpers ------------------------------------------------------------
+
+    def _engine_version(self) -> str:
+        engine = self.engine.get()
+        return str(getattr(engine, "__version__", "0")) if engine else "none"
+
+    def _tune(self, session: dict[str, Any]) -> dict[str, Any] | None:
+        tune_id = session.get("tune_id")
+        if tune_id is None:
+            return None
+        try:
+            return self.store.get_tune(int(tune_id))
+        except NotFound:
+            return None
+
+    def _tune_values_and_units(self, session: dict[str, Any]) -> tuple[dict[str, float], str]:
+        tune = self._tune(session)
+        if tune is None:
+            return {}, unit_system_for(self.store.get_settings())
+        return dict(tune["values"]), str(tune["unit_system"])
+
+    def _lap_fingerprint(self, session: dict[str, Any], lap: dict[str, Any]) -> str:
+        return _hash(self._engine_version(), session.get("tune_id"), lap["kind"], lap["valid"])
+
+    def _lap_object(
+        self, session: dict[str, Any], lap: dict[str, Any], frames: list[Frame] | None = None
+    ) -> Any:
+        """The engine's LapAnalysis object (kept in memory for session analysis)."""
+        key = (int(lap["id"]), self._lap_fingerprint(session, lap))
+        with self._lock:
+            if key in self._objects:
+                self._objects.move_to_end(key)
+                return self._objects[key]
+        engine = self.engine.require()
+        tune_values, unit_system = self._tune_values_and_units(session)
+        ctx = engine.LapContext(
+            drivetrain=drivetrain_code(session.get("drivetrain")),
+            lap_kind=lap["kind"],
+            lap_valid=lap["valid"],
+            tune_values=tune_values,
+            unit_system=unit_system,
+        )
+        obj = self._call(
+            engine.analyze_lap, frames if frames is not None else self.frames.get(lap), ctx
+        )
+        with self._lock:
+            self._objects[key] = obj
+            while len(self._objects) > _OBJECT_CACHE_SIZE:
+                self._objects.popitem(last=False)
+        return obj
+
+    def _session_context(
+        self, session: dict[str, Any], *, previous_session: Any, tune_changes: list[Any]
+    ) -> Any:
+        engine = self.engine.require()
+        tune_values, unit_system = self._tune_values_and_units(session)
+        return engine.SessionContext(
+            drivetrain=drivetrain_code(session.get("drivetrain")),
+            tune_values=tune_values,
+            unit_system=unit_system,
+            previous_session=previous_session,
+            tune_changes=tune_changes,
+        )
+
+    def _tune_changes(self, previous: dict[str, Any] | None, session: dict[str, Any]) -> list[Any]:
+        """Settings that differ between the previous session's tune and this one's."""
+        if previous is None:
+            return []
+        old, new = self._tune(previous), self._tune(session)
+        if old is None or new is None or old["id"] == new["id"]:
+            return []
+        engine = self.engine.require()
+        make = getattr(engine, "TuneChange", None)
+        changes = []
+        for change in diff_values(old["values"], new["values"]):
+            fields = {
+                "setting": change["setting"],
+                "from_value": change["from"],
+                "to_value": change["to"],
+            }
+            changes.append(make(**fields) if make is not None else fields)
+        return changes
+
+    @staticmethod
+    def _call(fn: Callable[..., T], *args: Any) -> T:
+        try:
+            return fn(*args)
+        except Exception as exc:
+            log.exception("analysis engine failed")
+            raise AnalysisFailed(f"{type(exc).__name__}: {exc}") from exc
+
+
+def _hash(*parts: Any) -> str:
+    raw = json.dumps(parts, sort_keys=True, default=str).encode()
+    return hashlib.sha1(raw).hexdigest()[:16]
