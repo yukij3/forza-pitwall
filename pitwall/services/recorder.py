@@ -118,19 +118,19 @@ class Recorder:
     # --- frame stream -------------------------------------------------------
 
     def handle_frame(self, frame: Frame, raw: bytes) -> None:
-        if (
-            self.auto_record
-            and self.session is None
-            and frame.is_race_on
-            and not self._last_race_on
-        ):
+        was_on = self._last_race_on
+        if self.auto_record and self.session is None and frame.is_race_on and not was_on:
             self.start(AUTO_NOTE, auto=True)
         self._last_race_on = frame.is_race_on
         if self.session is None or self._writer is None or self._segmenter is None:
             return
 
         if not frame.is_race_on:
-            self._segmenter.note_race_off()
+            if was_on:  # left the race: keep one race-off packet as a marker
+                self._writer.append(frame.recv_time, raw)
+            finished = self._segmenter.note_race_off()
+            if finished:
+                self._store_laps(finished)
             if self._auto_session and frame.recv_time - self._last_race_on_time >= AUTO_STOP_S:
                 self.stop()
             return
@@ -177,17 +177,7 @@ class Recorder:
             return
         self._writer.flush()
         for seg in segments:
-            lap = self.store.insert_lap(
-                session_id=int(self.session["id"]),
-                number=seg.number,
-                lap_time=None if seg.lap_time is None else round(seg.lap_time, 3),
-                kind=seg.kind,
-                valid=seg.valid,
-                invalid_reason=seg.invalid_reason,
-                frame_count=seg.frame_count,
-                first_frame=seg.first_index,
-                started_at=iso(seg.started_wall),
-            )
+            lap = self.store.insert_lap(session_id=int(self.session["id"]), **lap_fields(seg))
             self.lap_count += 1
             if self.on_lap is not None:
                 try:
@@ -199,3 +189,18 @@ class Recorder:
     def _changed(self) -> None:
         if self.on_change is not None:
             self.on_change()
+
+
+def lap_fields(seg: LapSegment) -> dict[str, Any]:
+    """Database fields of a finished lap."""
+    return {
+        "number": seg.number,
+        "lap_time": None if seg.lap_time is None else round(seg.lap_time, 3),
+        "kind": seg.kind,
+        "valid": seg.valid,
+        "invalid_reason": seg.invalid_reason,
+        "frame_count": seg.frame_count,
+        "first_frame": seg.first_index,
+        "last_frame": seg.last_index,
+        "started_at": iso(seg.started_wall),
+    }

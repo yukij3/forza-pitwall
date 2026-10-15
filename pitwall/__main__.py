@@ -1,4 +1,4 @@
-"""Command line: ``python -m pitwall serve | simulate | replay``."""
+"""Command line: ``python -m pitwall serve | simulate | replay | reindex``."""
 
 from __future__ import annotations
 
@@ -53,6 +53,13 @@ def _replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def _reindex(args: argparse.Namespace) -> int:
+    from pitwall.tools.reindex import run
+
+    data_dir = args.data_dir or Config.from_env().data_dir
+    return run(data_dir, args.session, analyze=not args.no_analysis, dry_run=args.dry_run)
+
+
 def build_parser() -> argparse.ArgumentParser:
     from pitwall.tools.simulator import ISSUES
 
@@ -85,6 +92,17 @@ def build_parser() -> argparse.ArgumentParser:
     rep.add_argument("--port", type=int, default=env.udp_port)
     rep.add_argument("--speedup", type=float, default=1.0)
     rep.set_defaults(func=_replay)
+
+    idx = sub.add_parser(
+        "reindex", help="rebuild laps and analysis of recorded sessions from their raw packets"
+    )
+    idx.add_argument("--data-dir", type=Path, help="data directory (env PITWALL_DATA_DIR)")
+    idx.add_argument(
+        "--session", type=int, action="append", help="only this session id (repeatable)"
+    )
+    idx.add_argument("--no-analysis", action="store_true", help="don't re-run the analysis")
+    idx.add_argument("--dry-run", action="store_true", help="show the new laps, write nothing")
+    idx.set_defaults(func=_reindex)
     return parser
 
 

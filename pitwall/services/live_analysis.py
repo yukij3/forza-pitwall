@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 UnitSystemProvider = Callable[[], str]
 
-QUEUE_SIZE = 240  # 4 s of frames at 60 Hz
+QUEUE_SIZE = 640  # ~4 s at the 160 packets/s a PC can send
 MIN_INTERVAL_S = 0.5  # at most 2 updates per second
 _STOP = object()
 
