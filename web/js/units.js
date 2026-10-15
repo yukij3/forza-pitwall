@@ -133,16 +133,16 @@ export function fmtClock(iso) {
 }
 
 // --- car
-// Data Out car class index. Mapping D..X assumed from the published Forza docs;
-// verify against the game and adjust here if it differs.
-const CLASSES = ["D", "C", "B", "A", "S", "R", "P", "X"];
+// Data Out car class index in Forza Motorsport (2023): 0 = E ... 8 = X.
+// The server also sends `class_name` derived from PI; prefer that.
+const CLASSES = ["E", "D", "C", "B", "A", "S", "R", "P", "X"];
 export function carClass(n) {
   if (n === null || n === undefined) return "?";
   return CLASSES[n] ?? `#${n}`;
 }
 export function carLabel(car) {
   if (!car) return "No car yet";
-  return `${carClass(car.class)} ${car.pi}`;
+  return `${car.class_name ?? carClass(car.class)} ${car.pi}`;
 }
 
 export function trackLabel(ordinal) {

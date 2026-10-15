@@ -75,8 +75,8 @@ class LazyModule:
 
 
 def unit_system_for(settings: Mapping[str, Any]) -> str:
-    """Unit system implied by the settings: follows the speed unit."""
-    return "imperial" if settings.get("units", {}).get("speed") == "mph" else "metric"
+    """Tuning unit system implied by the settings: follows the tire pressure unit."""
+    return "imperial" if settings.get("units", {}).get("pressure", "psi") == "psi" else "metric"
 
 
 def to_dict(result: Any) -> Any:

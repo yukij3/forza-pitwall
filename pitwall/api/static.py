@@ -24,6 +24,15 @@ docs: <a style="color: #8cf" href="/api/docs">/api/docs</a></p>
 _ALL_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 
 
+class NoCacheStaticFiles(StaticFiles):
+    """Static files that browsers always revalidate, so a redeploy is picked up at once."""
+
+    async def get_response(self, path: str, scope):  # noqa: ANN001, ANN201
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def install(app: FastAPI, web_dir: Path) -> None:
     """Register the API/WS catch-alls, then the UI. Call after all API routes."""
 
@@ -36,7 +45,7 @@ def install(app: FastAPI, web_dir: Path) -> None:
         await websocket.close(code=1008)
 
     if (web_dir / "index.html").is_file():
-        app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
+        app.mount("/", NoCacheStaticFiles(directory=web_dir, html=True), name="web")
     else:
 
         @app.get("/", include_in_schema=False)

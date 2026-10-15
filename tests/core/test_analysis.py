@@ -76,7 +76,7 @@ def test_session_analysis(app_factory: AppFactory) -> None:
     client = app_factory(engine=engine)
     record(client)
     second = record(client, laps=3)
-    client.put("/api/settings", json={"units": {"speed": "mph"}})
+    client.put("/api/settings", json={"units": {"pressure": "psi"}})
 
     assert client.get(f"/api/sessions/{second}/analysis").json() == {"laps_analyzed": 4}
     ctx = engine.calls["session"][-1]
@@ -271,7 +271,7 @@ def test_live_api_and_ws(app_factory: AppFactory) -> None:
 def test_live_reset_via_api_rebuilds_the_analyzer(app_factory: AppFactory) -> None:
     live = fake_live()
     client = app_factory(live=live)
-    client.put("/api/settings", json={"units": {"speed": "mph"}})
+    client.put("/api/settings", json={"units": {"pressure": "psi"}})
     inject(client, synth_laps(0, tail_s=0.5))
     count = len(live.instances)
     client.post("/api/live-analysis/reset")
