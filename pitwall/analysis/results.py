@@ -200,6 +200,7 @@ class LapMetrics:
     longest_straight_m: float = 0.0
     end_of_straight_rpm_pct: float | None = None
     end_of_straight_gear: int | None = None
+    peak_power_rpm_pct: float | None = None  # learned from full-throttle samples
     tire_temp_avg: dict[str, float] = field(default_factory=dict)  # °C
     tire_temp_max: dict[str, float] = field(default_factory=dict)  # °C
     tire_wear_delta: dict[str, float] = field(default_factory=dict)  # 0..1 per lap
@@ -231,6 +232,7 @@ class LapMetrics:
             "longest_straight_m": rnd(self.longest_straight_m, 1),
             "end_of_straight_rpm_pct": rnd(self.end_of_straight_rpm_pct),
             "end_of_straight_gear": self.end_of_straight_gear,
+            "peak_power_rpm_pct": rnd(self.peak_power_rpm_pct),
             "tire_temp_avg": _rnd_map(self.tire_temp_avg, 1),
             "tire_temp_max": _rnd_map(self.tire_temp_max, 1),
             "tire_wear_delta": _rnd_map(self.tire_wear_delta, 4),

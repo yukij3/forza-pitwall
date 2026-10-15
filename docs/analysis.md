@@ -7,18 +7,36 @@ library only), does no I/O and keeps no global state.
 
 ```python
 from pitwall.analysis import (
-    LapContext, SessionContext, TuneChange, LiveAnalyzer, analyze_lap, analyze_session,
+    LapContext,
+    SessionContext,
+    TuneChange,
+    LiveAnalyzer,
+    analyze_lap,
+    analyze_session,
 )
 
-lap = analyze_lap(frames, LapContext(drivetrain=1, lap_kind="flying", lap_valid=True,
-                                     tune_values={"arb.front": 20.0}, unit_system="imperial"))
-session = analyze_session([lap, ...], SessionContext(
-    drivetrain=1, tune_values={...}, unit_system="imperial",
-    previous_session=previous_analysis,                       # or None
-    tune_changes=[TuneChange("arb.front", 22.0, 20.0)],       # empty if unknown
-))
+lap = analyze_lap(
+    frames,
+    LapContext(
+        drivetrain=1,
+        lap_kind="flying",
+        lap_valid=True,
+        tune_values={"arb.front": 20.0},
+        unit_system="imperial",
+    ),
+)
+session = analyze_session(
+    [lap, ...],
+    SessionContext(
+        drivetrain=1,
+        tune_values={...},
+        unit_system="imperial",
+        previous_session=previous_analysis,  # or None
+        tune_changes=[TuneChange("arb.front", 22.0, 20.0)],  # empty if unknown
+    ),
+)
 board = LiveAnalyzer(drivetrain=1, tune_values={...}, unit_system="imperial")
-snapshot = board.push(frame)        # LiveAnalysis or None; board.snapshot(), board.reset()
+snapshot = board.push(frame)  # LiveAnalysis or None; board.snapshot(), board.reset()
 ```
 
 `drivetrain` is the Data Out integer (0 = FWD, 1 = RWD, 2 = AWD) or the
@@ -36,12 +54,13 @@ would change, so callers can invalidate cached analyses.
 
 Per-lap analysis and the live board share every step:
 
-1. **Samples** (`samples.py`). Each frame becomes a sample: time from the game
-   clock (`timestamp_ms`, wrap-safe, gaps over 0.25 s clamped), distance
-   integrated from speed, pedals 0..1, steering −1..1, lateral and longitudinal
-   g, yaw rate, axle slip angles (mean of |left| and |right|), the extreme slip
-   ratio per axle, the most compressed wheel per axle. Lateral g, longitudinal
-   g, yaw rate and steering get a 7-sample centred moving average.
+1. **Samples** (`samples.py`). Each frame becomes a sample: time (see
+   [Time base](#time-base)), distance integrated from speed, pedals 0..1,
+   steering −1..1, lateral and longitudinal g, yaw rate, axle slip angles (mean
+   of |left| and |right|), the extreme slip ratio per axle, the most compressed
+   wheel per axle, a per-axle wheel-speed ratio (see [Lockups](#lockups-and-abs))
+   and engine power. Lateral g, longitudinal g, yaw rate and steering get a
+   centred moving average over **0.12 s**.
 2. **Segmentation** (`segments.py`). A streaming segmenter cuts the samples
    into corners, braking zones, full-throttle straights and bottoming hits with
    constant work per sample.
@@ -52,6 +71,34 @@ Per-lap analysis and the live board share every step:
    with its OK band, with evidence and the symptom it points to.
 5. **Findings and recommendations** (`rules.py`). Items outside their band
    become findings; the rulebook maps each finding to single-setting changes.
+
+Nothing counts frames: every window, duration and average is in seconds, and
+means are time-weighted, so the packet rate doesn't change a result.
+
+### Time base
+
+The PC game sends **120–160 packets/s**. `current_race_time` and
+`current_lap` advance with every packet in steps of 1/360 s; `timestamp_ms`
+only ticks every ~15.6 ms, so about half the packets repeat it. Each time step
+comes from the first usable source:
+
+1. the race clock (`current_race_time`) step, if it is in (0, 0.25 s];
+2. the lap timer (`current_lap`) step within the same lap (the race clock stays
+   0 outside races);
+3. the receive-time step;
+4. the `timestamp_ms` step (wrap-safe); a repeated timestamp is a zero step,
+   because it shares the tick with the packet before it;
+5. otherwise the last good step (a gap over 0.25 s counts as one ordinary step).
+
+**Rewinds and restarts.** A rewind shows up as a 4–8 s gap with no race-on
+packets, after which the race clock is 3–7 s earlier; a restart resets it. When
+the race clock (or, without one, the lap timer) steps back by more than 0.5 s or
+jumps forward by more than 1 s, the sample is marked as a cut: no time is added
+for the jump, the smoothing window starts over, distance follows the car back
+(by the change in `distance_traveled`) and the segmenter closes everything that
+was open. Corners, braking zones and straights cut that way are partial and
+never rated, so a rewind can't create a corner, a lockup or a straight across
+it.
 
 ### Corners and phases
 
@@ -85,18 +132,30 @@ Per sample:
   past) its limit is the one giving up.
 - **Yaw balance** = 1 − measured path curvature / curvature expected from speed
   and steering, clamped to ±1. The expectation comes from the car's own in-grip
-  behaviour: while both axles are below 0.85 slip, a least-squares fit learns
-  `steer / curvature = a + b·v²` (wheelbase over steering gain plus the
-  understeer gradient and any speed-sensitive steering). The fit also learns
-  the sign conventions of steering and yaw rate. Counter-steer (steering
-  against the turn while still cornering) counts as −1.
-- **Balance** = 0.7 × slip balance + 0.3 × yaw balance (slip balance alone
-  until the fit has 60 samples).
+  behaviour: while both axles are below 0.85 slip, a time-weighted
+  least-squares fit learns `steer / curvature = a + b·v²` (wheelbase over
+  steering gain plus the understeer gradient and any speed-sensitive steering).
+  The fit also learns the sign conventions of steering and yaw rate.
+  Counter-steer (steering against the turn while still cornering) counts as −1.
+- **Balance** = 0.7 × slip balance + 0.3 × yaw balance, or slip balance alone
+  while there is no yaw model.
 
-A phase's balance is the mean over samples above 40 % of the corner's peak
-lateral g. A sample counts as an understeer moment when the front is past 1.0
-and balance ≥ +0.20, and as an oversteer moment when the rear is past 1.0 and
-balance ≤ −0.20 (or the driver counter-steers with the rear at 0.9 or more).
+There is no yaw model until the fit has **1 s** of in-grip samples, and none
+when the steering input isn't proportional to the wheel angle. With a gamepad
+the game sets the wheel angle itself and the stick sits at full lock through
+most corners, so `steer / curvature` grows with the input instead of staying
+constant at a given speed. The fit therefore also solves `steer / curvature =
+a + b·v² + c·steer`. If, at the fit's mean speed, the value at 75 % input is
+more than **1.5×** the value at 25 % input (or less than 1/1.5 of it), the
+yaw model is not used. Counter-steer detection doesn't need the model and
+stays on.
+
+A phase's balance is the time-weighted mean over samples above 40 % of the
+corner's peak lateral g. A sample counts as an understeer moment when the front
+is past 1.0 and balance ≥ +0.20, and as an oversteer moment when the rear is
+past 1.0 and balance ≤ −0.20 (or the driver counter-steers with the rear at 0.9
+or more). Each phase also records how much of its loaded time had the steering
+at full lock (|steer| ≥ 0.95); see [Confidence](#confidence).
 
 ### Other events
 
@@ -104,11 +163,32 @@ balance ≤ −0.20 (or the driver counter-steers with the rear at 0.9 or more).
 |---|---|
 | Wheelspin on exit | throttle ≥ 50 % and a driven-axle slip ratio ≥ 1.0 for ≥ 0.10 s, from mid-corner to the end of the exit window. FWD: front, RWD: rear, AWD: both (the worse axle is reported). |
 | Braking zone | brake ≥ 10 % for ≥ 0.4 s (releases shorter than 0.15 s don't end it) |
-| Lockup | in a braking zone, a slip ratio ≤ −1.0 on the axle for ≥ 0.08 s |
+| Lockup | in a braking zone, a loaded wheel on the axle (nearly) stopped for ≥ 0.10 s; see below |
 | Braking instability | brake ≥ 30 %, below corner lateral load, rear slip angle ≥ 0.8 and ≥ 0.25 above the front, for ≥ 0.10 s |
 | Bottoming | suspension travel ≥ 0.98 at ≥ 20 m/s, not on a rumble strip; hits closer than 0.2 s are one event |
 | Straight | throttle ≥ 95 % (dips under 0.3 s ignored) over ≥ 150 m |
 | Limiter | rpm ≥ 98.5 % of max for ≥ 0.2 s at full throttle (shorter touches are upshifts) |
+| Peak power | full-throttle samples (≥ 95 %, ≥ 10 m/s, forward gear, ≥ 30 % rpm) are binned by rpm in 2 % steps; the bin with the highest median power is the peak once it has ≥ 0.3 s of data, there are ≥ 5 such bins, and a higher-rpm bin is ≥ 0.5 % lower (otherwise the curve may still be rising and the peak is unknown) |
+
+### Lockups and ABS
+
+With ABS on, Data Out's normalised slip ratio sits around −0.3 to −0.6 under
+braking and dips past −1 for a few hundredths of a second all the time.
+Normalised 1.0 is only ~13 % real slip, so "slip ratio below −1" is ABS at
+work, not a locked wheel. A lock is a wheel that stops:
+
+- **Wheel-speed ratio.** Each wheel's rolling radius is learned from
+  free-rolling samples (≥ 15 m/s, no brake, |slip ratio| ≤ 0.05, |slip angle| ≤
+  0.5; median of the last 301 estimates, used after 30). Wheel speed × radius /
+  road speed is then 1.0 for a rolling wheel and 0.0 for a stopped one. The
+  game's slip ratio lags: it can sit near −1.3 while the wheel has already
+  stopped.
+- A sample is **locked** when a loaded wheel (suspension travel ≥ 0.05; a wheel
+  in the air stops freely) has a wheel-speed ratio ≤ **0.35**, or, until the
+  radius is known, a slip ratio ≤ **−3.0** (a stopped wheel reads about −7).
+- A **lockup** is a run of locked samples while braking at ≥ 10 m/s, with gaps
+  ≤ 0.03 s, lasting ≥ **0.10 s**, that starts with the rear slip angle below
+  1.5 (a car already sideways isn't locking its brakes).
 
 ## Lap metrics
 
@@ -128,6 +208,7 @@ balance ≤ −0.20 (or the driver counter-steers with the rear at 0.9 or more).
 | `bottoming_events`, `bottoming` | total and `{front, rear}` hits |
 | `limiter_time_s` | time on the limiter at full throttle |
 | `top_gear_used`, `top_gear_max_rpm_pct` | highest forward gear and its peak rpm (fraction of max) |
+| `peak_power_rpm_pct` | rpm of peak engine power (fraction of max), learned from the lap's full-throttle samples; `null` until proven |
 | `longest_straight_m`, `end_of_straight_rpm_pct`, `end_of_straight_gear` | longest straight; rpm and gear at its end |
 | `tire_temp_avg`, `tire_temp_max` | °C per wheel |
 | `tire_wear_delta` | change of the wear value per wheel over the lap (the direction of the game's scale is undocumented, so this is the absolute change) |
@@ -166,7 +247,7 @@ session findings start at severity 0.10.
 | `braking_stability` | share of braking zones with rear instability | ≤ 0.10 | 0.25 | 5 stops | `braking-instability` |
 | `bottoming_front` | front bottoming hits in the window | ≤ 1 | 3 | 4 corners | `bottoming-front` |
 | `bottoming_rear` | rear hits | ≤ 1 | 3 | 4 corners | `bottoming-rear` |
-| `gearing` | rpm at the end of the longest straight (≥ 250 m), fraction of max | ≥ 0.85, no limiter | 0.75; limiter: 0.3 s → warn, 1.0 s → bad | 1 straight | `gearing-short` (limiter in the top gear used) / `gearing-long` (top gear used, held ≥ 2.5 s, low rpm) |
+| `gearing` | rpm at the end of the longest straight (≥ 250 m), fraction of max | at or past peak power: end rpm / peak-power rpm ≥ 0.97 (≥ 0.85 of max while the peak is unknown), no limiter | 0.85 of the peak-power rpm (0.75 of max); limiter: 0.3 s → warn, 1.0 s → bad | 1 straight | `gearing-short` (limiter in the top gear used) / `gearing-long` (top gear used, held ≥ 2.5 s, low rpm) |
 | `tire_temps` | front − rear average temperature, °C | ±8 | ±15; also either axle above 105 °C (bad at 115) or below 60 °C (bad at 50) | 30 s | `tires-hot-<axle>` / `tires-cold-<axle>` |
 
 Balance items use the median over corners, so one slide doesn't move them. Rate
@@ -188,8 +269,10 @@ window, and tire temperatures over the window (at least the last 60 s).
 - **Focus.** The one `warn`/`bad` item with a recommendation that has the
   highest severity × confidence (`bad` weighted 1.5×). `null` when nothing
   needs fixing.
-- **Reset** after a tune change: the window, the steering model and the
-  hysteresis memory start over.
+- **Reset** after a tune change: the window, the steering model, the power
+  curve and the hysteresis memory start over.
+- **Rewinds** close whatever corner, braking zone or straight was open; those
+  partial records are dropped (see [Time base](#time-base)).
 
 `to_dict()`:
 
@@ -281,7 +364,7 @@ Recommendation fields: `id` (`<setting>-up|down`, or `revert-<setting>`),
 
 | Finding type | Confidence |
 |---|---|
-| Balance | 0.3 + 0.2 × share of corners with the same sign + 0.2 × share whose yaw balance agrees + 0.2 × share of corners with flagged moments + 0.1 × min(1, corners / 8), capped at 0.95 |
+| Balance | 0.3 + 0.2 × share of corners with the same sign + 0.2 × share whose yaw balance agrees (0.5 without a yaw model) + 0.2 × share of corners with flagged moments + 0.1 × min(1, corners / 8), capped at 0.95. Understeer measured with the steering at full lock for ≥ 50 % of the phase's loaded time gets × 0.6, and the evidence says so: with a gamepad, part of the front slip is the stick, not the set-up |
 | Wheelspin, lockups, instability | 0.5 + 0.3 × min(1, events / 4) + 0.2 × min(1, samples / 8) |
 | Bottoming | 0.5 + 0.1 × min(3, hits) + 0.1 if at two or more spots |
 | Gearing | 0.75 (limiter), 0.45 (too long; Data Out doesn't give the gear count) |
@@ -337,7 +420,13 @@ With a `previous_session`:
 `pitwall.analysis.synthetic` generates deterministic Data Out frames for tests,
 demos and simulators: a point-mass car (friction circle with aero, power and
 drag limits, six-speed gearbox) laps a closed 4.1 km track with eight corners
-(five slow, three fast). Issues are injected on top of the ideal lap:
+(five slow, three fast). The stream looks like the PC game's: any packet rate
+(`hz`, default 60; the tests also use 144, 160 and 165), a race clock and lap
+timer in 1/360 s steps, `timestamp_ms` ticking every 15.625 ms, per-wheel
+rolling radii, and ABS modulation under hard braking (slip ratio dipping to
+about −1.6 for ~0.09 s at a time while the wheels keep turning at ~80 % of
+road speed). Injected lockups stop the wheels (slip ratio −7.2) for part of
+each braking zone. Issues are injected on top of the ideal lap:
 
 `none`, `understeer`, `high-speed-understeer`, `oversteer-entry`,
 `oversteer-exit`, `unstable-braking`, `wheelspin`, `lockup-front`,
@@ -349,7 +438,7 @@ from pitwall.analysis.synthetic import SyntheticDriver, generate_lap, generate_l
 
 frames = generate_lap("wheelspin", drivetrain="FWD", seed=3)
 laps = generate_laps("lockup-rear", 3, drivetrain="RWD", seed=1)
-for frame in SyntheticDriver("understeer", seed=7).frames():   # endless stream
+for frame in SyntheticDriver("understeer", seed=7).frames():  # endless stream
     ...
 ```
 
@@ -366,11 +455,16 @@ number, last/best lap, distance, tire temperatures and wear carry over). Frame
   settings entered in the tune sheet. Whether the car has adjustable aero is
   unknown.
 - **Gear count.** Not in the stream. "Gearing too long" means the highest gear
-  used ends the longest straight below 85 % rpm; an unused top gear can't be
-  seen directly.
-- **Steering assists.** The yaw model learns the steering-to-curvature relation
-  per car and session, but controller assists that change with speed blur it.
-  Slip angles carry most of the balance weight for that reason.
+  used ends the longest straight short of the peak-power rpm; an unused top
+  gear can't be seen directly.
+- **Steering input.** The yaw model needs steering proportional to the wheel
+  angle. With a gamepad it switches itself off and balance rests on slip angles
+  alone. Then a stick held at full lock overdrives the front tires, and that
+  looks the same as set-up understeer; the evidence and confidence say so.
+- **Driver aids.** ABS and traction control state are not in Data Out.
+  Lockups are judged by stopped wheels, so they work with ABS on or off. The
+  wheelspin rule (slip ratio ≥ 1.0 for ≥ 0.10 s) sits right at the
+  traction-control cap and is untested with TCS off.
 - **Lap validity.** Track-limit penalties aren't in Data Out; laps the game
   invalidated may still count.
 - **Driver vs car.** Findings describe what the car did. A single mistake
@@ -378,6 +472,62 @@ number, last/best lap, distance, tire temperatures and wear carry over). Frame
   consistent driving habit looks the same as a set-up trait.
 - **Tire wear.** The direction of the game's wear scale is undocumented, so
   only the per-lap change is reported.
-- **Thresholds** come from vehicle-dynamics reasoning and synthetic laps, not
-  yet from a large set of real recordings. They all live in
-  `pitwall/analysis/thresholds.py`.
+- **Thresholds** come from vehicle-dynamics reasoning, synthetic laps and a
+  first set of real recordings (one car, see below), not yet from many cars.
+  They all live in `pitwall/analysis/thresholds.py`.
+
+## Calibration on real recordings
+
+First calibration: three sessions on three tracks with one car (a rear-drive
+LMP2-class prototype, max rpm 6000, gamepad, ABS on, TCS apparently on), six
+laps, about 68,500 frames.
+
+- **Packet rate and clocks.** 118–134 packets/s. About half the packets repeat
+  `timestamp_ms` (15/16 ms ticks) but carry different physics, so they are not
+  duplicates. The race clock and lap timer step in multiples of 1/360 s and agree
+  with `distance_traveled`. The earlier time base fell back to the receive
+  clock on repeated timestamps and counted time about 1.5× (86 instead of
+  ~130 samples/s). Every duration-based value was inflated by that.
+- **Lockups.** In 7,178 braking samples (brake ≥ 10 %, ≥ 10 m/s), the median
+  normalised slip ratio was −0.47 (front left), −0.59 (front right), −0.30 and
+  −0.34 (rear), with 5th percentiles of −1.25 to −1.31 at the front. Runs below
+  −1 lasted 0.04 s (median) and up to 0.44 s. The old rule (≤ −1.0 for
+  ≥ 0.08 s) called lockups in nearly every stop: front 9 of 9 and rear 5 of 9 on
+  one lap. Wheel speeds showed one clear lock: a front wheel stopped for 0.2 s
+  at 47 m/s in a straight-line stop. One more was borderline (stopped for
+  ~0.1 s as the brake was released). That is 2 in 38 braking zones, all front
+  right. Two more "deep" events were a spinning car with its wheels in the air
+  and a lightly loaded inside wheel. The current rule finds exactly the two
+  real ones and nothing on the flat-out track.
+- **Rolling radius.** Learned radii were 0.324–0.326 m (front) and
+  0.354–0.362 m (rear), stable through each session.
+- **Balance.** The yaw model's linearity check gives 2.9–3.2 on every real lap,
+  against 1.0–1.25 for synthetic laps. The stick was at full lock in 63 % of
+  hard-cornering samples. With the yaw model on, its term sat near −1 (the car
+  "over-rotating") in most corners and pulled the balance towards neutral; it
+  is now off for such input. The slip angles show the front past its grip peak
+  (1.2–2.0) with the rear at 0.5–0.8 in most loaded phases, so the understeer
+  readings stand (entry +0.25…+0.39 per lap, slow mid-corner +0.53…+0.64 on
+  three laps and −0.06 on the fourth). They
+  come with the full-lock caveat (54–86 % of the phase's loaded time) and lower
+  confidence. Bands are unchanged: telling set-up from input needs laps with a
+  wheel or less steering input.
+- **Gearing.** Peak power was at 75–77 % of max rpm (335 kW), and full-throttle
+  rpm rarely went past ~82 %. Top gear ended the longest straights at 74–82 %, so
+  at or just past peak power. The old "≥ 85 % of max rpm" band recommended a
+  shorter final drive, which would have pushed the engine further past its
+  peak. Gearing is now judged against the learned peak.
+- **Wheelspin.** Under throttle the rear slip ratio had p50 0.09, p90 0.61, p99
+  1.02, and only 1.2 % of samples were at or above 1.0 (traction control
+  likely capping it). There were 5 exits with wheelspin, all in slow corners
+  (14–19 m/s), lasting 0.20–0.39 s with peaks of 1.05–3.21. Band unchanged.
+- **Tires and bottoming.** Average temperatures were 71–99 °C with front−rear
+  within ±4 °C. There was at most one bottoming hit per axle per lap. Bands
+  unchanged.
+- **Cost.** The live board took 3.7 µs per frame on average and at most 1.0 ms
+  per push. At 160 packets/s the budget is 6.25 ms.
+
+Still needs real data: lockups with ABS off; other cars and tire compounds
+(the slip normalisation and rolling radii differ); laps with a wheel, to
+calibrate the yaw model and the balance bands; wheelspin with TCS off; a car
+whose power peaks near the limiter; and cars with a different gear count.

@@ -54,6 +54,9 @@ _DS = 1.0  # track grid, metres
 _SMOOTH_M = 31  # curvature smoothing window (clothoid-like transitions)
 _START_OFFSET_M = 300.0  # start/finish line position on the main straight
 _TS_MOD = 1 << 32
+_SLIP_PER_UNIT = 0.13  # real slip per unit of normalised slip ratio (as seen in the game)
+_LOCKED_SLIP_RATIO = -7.2  # normalised slip ratio of a stopped wheel
+_ABS_HZ = 3.0  # ABS modulation cycles per second
 
 # (length for straights / radius for arcs, turn in degrees: 0 = straight, + = right)
 _SEGMENTS: tuple[tuple[float, float], ...] = (
@@ -162,7 +165,8 @@ class Car:
     wheelbase: float = 2.6
     us_gradient: float = 0.0006  # s^2/m
     steer_lock: float = 0.25  # rad of road-wheel angle at full steer
-    wheel_radius: float = 0.34
+    wheel_radius: float = 0.34  # driven wheels, for rpm
+    wheel_radii: tuple[float, ...] = (0.323, 0.323, 0.356, 0.356)  # rolling radius per wheel
     gears: tuple[float, ...] = (3.30, 2.40, 1.86, 1.50, 1.25, 1.06)
     max_rpm: float = 8000.0
     idle_rpm: float = 900.0
@@ -286,6 +290,8 @@ class _Plan:
     d_susp_f: list[float]
     d_susp_r: list[float]
     grip: list[float]
+    lock_f: list[float]  # 1.0 where the front wheels are locked
+    lock_r: list[float]
     susp_offset_f: float = 0.0
     susp_offset_r: float = 0.0
 
@@ -343,7 +349,19 @@ def _plan(
     sev: float,
 ) -> _Plan:
     n = len(trk.kappa)
-    p = _Plan(*([0.0] * n for _ in range(4)), [1.0] * n, [0.0] * n, [0.0] * n, [0.0] * n, [1.0] * n)
+    p = _Plan(
+        d_sa_f=[0.0] * n,
+        d_sa_r=[0.0] * n,
+        d_sr_f=[0.0] * n,
+        d_sr_r=[0.0] * n,
+        steer_mul=[1.0] * n,
+        d_yaw=[0.0] * n,
+        d_susp_f=[0.0] * n,
+        d_susp_r=[0.0] * n,
+        grip=[1.0] * n,
+        lock_f=[0.0] * n,
+        lock_r=[0.0] * n,
+    )
     corners = _grid_corners(trk, base)
     zones = _brake_zones(base)
 
@@ -414,13 +432,17 @@ def _plan(
     for axle in ("front", "rear"):
         if f"lockup-{axle}" not in issues:
             continue
+        # a real lock (ABS off or overwhelmed): the wheels stop for a moment
         for z0, z1 in zones:
             if z1 - z0 < 30:
                 continue
-            shape, rf = _bump(int((z1 - z0) * 0.45)), rng.uniform(0.85, 1.15)
-            add(p.d_sr_f if axle == "front" else p.d_sr_r, z0, shape, -0.95 * sev * rf)
+            length = max(10, int((z1 - z0) * 0.2 * sev * rng.uniform(0.85, 1.15)))
+            lo = z0 + (z1 - z0) // 8
+            lock = p.lock_f if axle == "front" else p.lock_r
+            for k in range(lo, min(lo + length, z1)):
+                lock[k] = 1.0
             if axle == "rear":
-                add(p.d_sa_r, z0, shape, 0.15)
+                add(p.d_sa_r, lo, _bump(length), 0.15)
     for issue, front in (("bottoming", True), ("bottoming-rear", False)):
         if issue not in issues:
             continue
@@ -562,8 +584,14 @@ class SyntheticDriver:
             sa = (out_f, in_f, out_r, in_r) if sign > 0 else (in_f, out_f, in_r, out_r)
 
             a_full = min(trac, car.power / max(v, 1.0)) - car.drag * v * v
-            drive = (0.06 + 0.32 * thr * max(0.0, min(1.0, a_full / trac))) if thr > 0 else 0.0
+            drive = (0.02 + 0.32 * thr * max(0.0, min(1.0, a_full / trac))) if thr > 0 else 0.0
             sr_f, sr_r = -0.5 * brk, -0.45 * brk
+            if brk > 0.6:
+                # ABS cycling as seen on real recordings: slip ratio dips past -1 for
+                # ~0.1 s at a time (deep enough to fool a "slip ratio < -1" rule), but
+                # the wheels keep turning at ~80 % of road speed
+                sr_f -= 1.1 * brk * max(0.0, math.sin(2 * math.pi * _ABS_HZ * tg)) ** 2
+                sr_r -= 0.8 * brk * max(0.0, math.sin(2 * math.pi * _ABS_HZ * tg + 2.0)) ** 2
             if self.drivetrain == "FWD":
                 sr_f += drive
             elif self.drivetrain == "RWD":
@@ -573,6 +601,10 @@ class SyntheticDriver:
                 sr_r += 0.8 * drive
             sr_f += plan.d_sr_f[j]
             sr_r += plan.d_sr_r[j]
+            if plan.lock_f[j]:
+                sr_f = _LOCKED_SLIP_RATIO
+            if plan.lock_r[j]:
+                sr_r = _LOCKED_SLIP_RATIO
             sr = (
                 sr_f + gauss(0, 0.015),
                 sr_f + gauss(0, 0.015),
@@ -618,7 +650,7 @@ class SyntheticDriver:
                 Frame(
                     recv_time=self.start_time + tg,
                     is_race_on=True,
-                    timestamp_ms=round(tg * 1000) % _TS_MOD,
+                    timestamp_ms=round(math.floor(tg * 64) * 15.625) % _TS_MOD,
                     engine_max_rpm=car.max_rpm,
                     engine_idle_rpm=car.idle_rpm,
                     current_engine_rpm=rpm,
@@ -636,7 +668,12 @@ class SyntheticDriver:
                     roll=0.02 * a_lat / G,
                     susp_travel_norm=Corners(*susp),
                     tire_slip_ratio=Corners(*sr),
-                    wheel_rot_speed=Corners(*(v / car.wheel_radius * (1 + 0.1 * x) for x in sr)),
+                    wheel_rot_speed=Corners(
+                        *(
+                            v / radius * max(0.0, 1.0 + _SLIP_PER_UNIT * x)
+                            for radius, x in zip(car.wheel_radii, sr, strict=True)
+                        )
+                    ),
                     wheel_on_rumble=Corners(0.0, 0.0, 0.0, 0.0),
                     wheel_in_puddle=Corners(0.0, 0.0, 0.0, 0.0),
                     surface_rumble=Corners(0.0, 0.0, 0.0, 0.0),
