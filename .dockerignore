@@ -1,0 +1,12 @@
+# Allow-list: the image needs only the lock, project metadata, the Python
+# package and the static UI. Everything else (recordings in data/, virtualenvs,
+# local notes, git history) stays out of the build context.
+*
+!pyproject.toml
+!uv.lock
+!pitwall/
+!web/
+
+**/__pycache__/
+**/*.py[cod]
+**/.DS_Store
