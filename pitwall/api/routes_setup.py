@@ -39,4 +39,9 @@ async def baseline_for_car(
 async def baseline_for_category(
     services: ServicesDep, category_id: str, unit_system: UnitSystem | None = None
 ) -> dict[str, Any]:
-    return services.baselines.baseline(category_id, unit_system or services.unit_system())
+    frame = services.receiver.last_race_frame  # manual pick still uses the car's drivetrain
+    return services.baselines.baseline(
+        category_id,
+        unit_system or services.unit_system(),
+        frame.drivetrain if frame is not None and frame.car_ordinal else None,
+    )

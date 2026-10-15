@@ -24,10 +24,14 @@ class BaselineService:
     def categories(self) -> list[Any]:
         return [to_dict(c) for c in self.module.require().categories()]
 
-    def baseline(self, category_id: str, unit_system: str) -> dict[str, Any]:
+    def baseline(
+        self, category_id: str, unit_system: str, drivetrain: int | None = None
+    ) -> dict[str, Any]:
+        """Baseline for a category; ``drivetrain`` picks the differential settings."""
         module = self.module.require()
+        kwargs = {} if drivetrain is None else {"drivetrain": drivetrain}
         try:
-            result = module.baseline(category_id, unit_system)
+            result = module.baseline(category_id, unit_system, **kwargs)
         except (LookupError, ValueError) as exc:
             raise UnknownCategory(f"baseline category {category_id!r}") from exc
         if result is None:
@@ -44,7 +48,8 @@ class BaselineService:
             return {"match": None, "baseline": None}
         match_dict = to_dict(match)
         category_id = match_dict["category_id"]
-        return {"match": match_dict, "baseline": self.baseline(category_id, unit_system)}
+        baseline = self.baseline(category_id, unit_system, frame.drivetrain)
+        return {"match": match_dict, "baseline": baseline}
 
     def car_info(self, ordinal: int) -> dict[str, Any] | None:
         """Name/division of a car if the baselines module knows it (cached)."""

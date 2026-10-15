@@ -226,7 +226,7 @@ def fake_baselines() -> types.ModuleType:
             return Match("gt-awd", "class_drivetrain", "low", None)
         return None
 
-    def baseline(category_id: str, unit_system: str = "imperial") -> FakeResult:
+    def baseline(category_id: str, unit_system: str = "imperial", drivetrain=None) -> FakeResult:
         category = next((c for c in cats if c.id == category_id), None)
         if category is None:
             raise KeyError(category_id)
