@@ -10,15 +10,16 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from functools import cache
-from pathlib import Path
 from typing import Any
 
+from pitwall.config import resource_root
 from pitwall.tune.settings import BY_KEY, SETTINGS
 
 from .types import Baseline, BaselineSetting, CarInfo, Category, Source
 from .units import check_unit_system, convert
 
-DATA_DIR = Path(__file__).parent / "data"
+# Resolved via resource_root() so a PyInstaller bundle finds it under sys._MEIPASS.
+DATA_DIR = resource_root() / "pitwall" / "baselines" / "data"
 DRIVETRAINS = ("FWD", "RWD", "AWD")
 BASES = ("published", "carried_over", "principles")
 
