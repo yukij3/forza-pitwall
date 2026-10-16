@@ -1,6 +1,6 @@
 [project]
 name = "forza-pitwall"
-version = "0.1.0"
+version = "0.2.0"
 description = "Forza Motorsport telemetry recorder and tuning assistant with a web UI"
 readme = "README.md"
 requires-python = ">=3.12"
