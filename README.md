@@ -60,6 +60,38 @@ which setting to change next, in the words of the game's tuning menu.
 
 <sub>Screenshots: demo mode (`/?mock=1`).</sub>
 
+## Windows app
+
+The simplest way to run Pitwall on the gaming PC itself: one `.exe`, no Python
+or Docker.
+
+1. Download `forza-pitwall-<version>-windows-x64.exe` from
+   [Releases](https://github.com/yukij3/forza-pitwall/releases) and run it. It
+   opens the Pitwall UI in its own window; closing the window stops Pitwall.
+2. In the game, set **Data Out IP Address** to `127.0.0.1`, **Data Out IP
+   Port** to `5300` and **Data Out Packet Format** to **Car Dash** (see
+   [Set up Data Out in the game](#set-up-data-out-in-the-game)).
+
+Notes:
+
+- **SmartScreen** warns about the download because the exe is not code-signed:
+  choose **More info → Run anyway**.
+- **Windows Firewall** asks on first launch because Pitwall listens on UDP 5300.
+  With the game on the same PC you can decline; if the game runs on another
+  PC (or an Xbox) on your network, allow **private networks** and send Data Out
+  to this PC's LAN IP instead of `127.0.0.1`.
+- The window uses **Microsoft Edge WebView2**, which is preinstalled on
+  Windows 10 and 11.
+- Data (database, recordings, `pitwall-desktop.log`) is stored in
+  `%LOCALAPPDATA%\forza-pitwall`. The usual `PITWALL_*` environment variables
+  still apply, e.g. `PITWALL_DATA_DIR` or `PITWALL_UDP_PORT`.
+- **Microsoft Store / Xbox app version of the game**: Forza Motorsport (2023)
+  officially supports sending Data Out to `127.0.0.1`, and its Store package is
+  a full-trust desktop app, so Windows' loopback block for sandboxed Store apps
+  should not apply. If no packets arrive on `127.0.0.1` anyway, send to the
+  PC's LAN IP, or allow loopback for the game once from an administrator
+  terminal: `CheckNetIsolation LoopbackExempt -a -n=Microsoft.ForzaMotorsport_8wekyb3d8bbwe`.
+
 ## Quick start (Docker Compose)
 
 You need Docker with Compose v2 on a machine in the same local network as the
@@ -143,7 +175,14 @@ uv run python -m pitwall simulate  # synthetic telemetry, in a second terminal
 `python -m pitwall replay <file>` plays back a recorded packet file, and
 `python -m pitwall reindex` rebuilds laps from them. Demo mode,
 `http://localhost:5301/?mock=1`, fakes the API and the live feed in the
-browser. See [CONTRIBUTING.md](CONTRIBUTING.md) and
+browser.
+
+The Windows app is built by the `Windows app` workflow; to build it locally on
+Windows: `uv sync --group desktop`, then
+`uv run pyinstaller --noconfirm packaging/windows/pitwall.spec`. The exe lands
+in `dist\`; `forza-pitwall.exe --smoke` checks it without opening a window
+(exit code 0 or 1, details in `pitwall-desktop.log` in the data directory).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and
 [docs/architecture.md](docs/architecture.md).
 
 ## Project layout
@@ -161,6 +200,8 @@ pitwall/
   app.py        application wiring
   config.py     configuration from environment variables
   __main__.py   command line: serve, simulate, replay, reindex
+  desktop.py    Windows app: server in a background thread, native window
+packaging/      Windows app build: PyInstaller spec and icon
 web/            browser UI: plain HTML, CSS and JavaScript, no build step
 tests/          pytest suites, one folder per area
 docs/           installation, architecture, API, storage, analysis, baselines

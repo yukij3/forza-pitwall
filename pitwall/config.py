@@ -3,12 +3,41 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+APP_NAME = "forza-pitwall"
+
+
+def is_frozen() -> bool:
+    """True inside a PyInstaller bundle (the Windows desktop app)."""
+    return bool(getattr(sys, "frozen", False)) and hasattr(sys, "_MEIPASS")
+
+
+def resource_root(frozen: bool | None = None) -> Path:
+    """Directory that holds ``pitwall/`` and ``web/``.
+
+    The repository root from a checkout or the Docker image; the unpacked bundle
+    (``sys._MEIPASS``) when frozen.
+    """
+    if is_frozen() if frozen is None else frozen:
+        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    return Path(__file__).resolve().parent.parent
+
+
+def default_data_dir(env: Mapping[str, str] | None = None, frozen: bool | None = None) -> Path:
+    """``./data`` normally; ``%LOCALAPPDATA%\\forza-pitwall`` in the desktop app."""
+    if not (is_frozen() if frozen is None else frozen):
+        return Path("./data")
+    env = os.environ if env is None else env
+    base = env.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+    return Path(base) / APP_NAME
+
+
+REPO_ROOT = resource_root()
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +63,7 @@ class Config:
             udp_port=_int(get("PITWALL_UDP_PORT"), defaults.udp_port, "PITWALL_UDP_PORT"),
             http_port=_int(get("PITWALL_HTTP_PORT"), defaults.http_port, "PITWALL_HTTP_PORT"),
             bind=get("PITWALL_BIND") or defaults.bind,
-            data_dir=Path(get("PITWALL_DATA_DIR") or defaults.data_dir),
+            data_dir=Path(get("PITWALL_DATA_DIR") or default_data_dir(env)),
             public_host=get("PITWALL_PUBLIC_HOST") or defaults.public_host,
             live_hz=_float(get("PITWALL_LIVE_HZ"), defaults.live_hz, "PITWALL_LIVE_HZ"),
             web_dir=Path(get("PITWALL_WEB_DIR") or defaults.web_dir),
